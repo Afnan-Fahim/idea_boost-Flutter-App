@@ -571,6 +571,7 @@ class _LoginScreenState extends State<LoginScreen>
                             child: _buildSocialButton(
                               icon: 'assets/apple.png',
                               label: 'Apple',
+                              color: Colors.white,
                               isLoading: vm.isLoading,
                               onPressed: () async {
                                 final success = await vm.loginWithApple();
@@ -1113,10 +1114,11 @@ class _LoginScreenState extends State<LoginScreen>
     required double Function(double) s,
     required double Function(double) sv,
     required double Function(double) fs,
+    Color? color,
   }) {
     return OutlinedButton.icon(
       onPressed: isLoading ? null : onPressed,
-      icon: Image.asset(icon, height: s(20), width: s(20)),
+      icon: Image.asset(icon, height: s(20), width: s(20), color: color),
       label: AutoSizeText(
         label,
         style: TextStyle(fontSize: fs(14), fontWeight: FontWeight.w600),
