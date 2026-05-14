@@ -1,0 +1,761 @@
+// lib/modules/quick_tools/view/viral_rewrite_screen.dart
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:ideaboost/core/constants/colors.dart';
+import 'package:ideaboost/core/utils/helpers.dart';
+import 'package:ideaboost/data/repository/favorites_repository.dart';
+import 'package:ideaboost/modules/quick_tools/view_model/viral_rewrite_view_model.dart';
+import 'package:provider/provider.dart';
+import 'package:ideaboost/data/repository/user_repository.dart';
+import 'package:ideaboost/core/services/admob_service.dart';
+
+class ViralRewriteScreen extends StatefulWidget {
+  final String? initialInput;
+  final String? initialRewardToken;
+  const ViralRewriteScreen({
+    Key? key,
+    this.initialInput,
+    this.initialRewardToken,
+  }) : super(key: key);
+
+  @override
+  State<ViralRewriteScreen> createState() => _ViralRewriteScreenState();
+}
+
+class _ViralRewriteScreenState extends State<ViralRewriteScreen> {
+  final TextEditingController _textController = TextEditingController();
+  bool _isButtonDebouncing = false;
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  void _showLimitExceededDialog(
+    BuildContext context,
+    ViralRewriteViewModel vm,
+  ) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: AppColors.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.warning,
+                        AppColors.warning.withOpacity(0.7),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.lock_outline,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'viral_rewrite.limit_dialog_title'.tr(),
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'viral_rewrite.limit_dialog_subtitle'.tr(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          Navigator.of(dialogContext).pop();
+                          await adMobService.showRewardedAd(
+                            context: context,
+                            onRewarded: () {
+                              //vm.increaseLimitByAdReward();
+                              showSnackBarSafe(
+                                context,
+                                SnackBar(
+                                  content: Text(
+                                    'viral_rewrite.snack_reward'.tr(),
+                                  ),
+                                  backgroundColor: AppColors.success,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.success,
+                          side: BorderSide(
+                            color: AppColors.success.withOpacity(0.3),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.play_circle_outline, size: 20),
+                            const SizedBox(width: 6),
+                            Text(
+                              'viral_rewrite.reward_button'.tr(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                          showSnackBarSafe(
+                            context,
+                            SnackBar(
+                              content: Text(
+                                'viral_rewrite.snack_pro_navigating'.tr(),
+                              ),
+                              backgroundColor: AppColors.accent,
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'viral_rewrite.go_pro_button'.tr(),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAbuseContentDialog(BuildContext context, String errorMessage) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: AppColors.surface,
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.error,
+                        AppColors.error.withOpacity(0.7),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.block_outlined,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Content Blocked',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  errorMessage,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Understood',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showFeedback(BuildContext context, String message, {Color? color}) {
+    showSnackBarSafe(
+      context,
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color ?? AppColors.accent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _copyToClipboard(BuildContext context, String text) {
+    Clipboard.setData(ClipboardData(text: text)).then((_) {
+      _showFeedback(
+        context,
+        'viral_rewrite.snack_copy'.tr(),
+        color: AppColors.success,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider<ViralRewriteViewModel>(
+      create: (_) => ViralRewriteViewModel(
+        Provider.of<UserRepository>(context, listen: false),
+        initialRewardToken: widget.initialRewardToken,
+      ),
+      child: Consumer<ViralRewriteViewModel>(
+        builder: (context, vm, child) {
+          // Auto-fill initial input
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (widget.initialInput != null &&
+                widget.initialInput!.isNotEmpty) {
+              _textController.text = widget.initialInput!;
+              vm.updateInput(widget.initialInput!);
+            }
+
+            final error = vm.errorMessage;
+            if (error != null) {
+              if (error.contains("Daily limit exceeded")) {
+                vm.clearError();
+                _showLimitExceededDialog(context, vm);
+              } else if (error.contains("Content blocked") ||
+                  error.contains("violates safety")) {
+                vm.clearError();
+                _showAbuseContentDialog(context, error);
+              } else {
+                _showFeedback(context, error, color: AppColors.error);
+                vm.clearError();
+              }
+            }
+          });
+
+          return Directionality(
+            textDirection: ui.TextDirection.ltr,
+            child: Scaffold(
+            backgroundColor: AppColors.backgroundTop,
+            body: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [AppColors.backgroundTop, AppColors.backgroundBottom],
+                ),
+              ),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.08),
+                              ),
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.arrow_back, size: 20),
+                              color: AppColors.textPrimary,
+                              padding: EdgeInsets.zero,
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'viral_rewrite.title'.tr(),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                                if (vm.isLoading)
+                                  Text(
+                                    'viral_rewrite.generating'.tr(),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (vm.output != null)
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.refresh, size: 20),
+                                color: AppColors.textPrimary,
+                                padding: EdgeInsets.zero,
+                                onPressed: () => vm.generateViralRewrite(
+                                  language: context.locale.languageCode,
+                                  locale: Platform.localeName.replaceAll(
+                                    '_',
+                                    '-',
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    // Main body
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                        children: [
+                          vm.output == null
+                              ? _buildInputSection(vm)
+                              : _buildOutputSection(vm),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildInputSection(ViralRewriteViewModel vm) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(color: AppColors.warning.withOpacity(0.15), blurRadius: 24),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Input header
+            Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.warning,
+                        AppColors.warning.withOpacity(0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'viral_rewrite.input_title'.tr(),
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'viral_rewrite.input_subtitle'.tr(),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.surfaceBright,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.06)),
+              ),
+              child: TextField(
+                controller: _textController,
+                onChanged: vm.updateInput,
+                maxLines: 10,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 15,
+                  height: 1.5,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'viral_rewrite.input_hint'.tr(),
+                  hintStyle: TextStyle(color: AppColors.textSecondary),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(20),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton(
+                onPressed:
+                    (vm.input.isEmpty || vm.isLoading || _isButtonDebouncing)
+                    ? null
+                    : () async {
+                        if (_isButtonDebouncing) return;
+                        setState(() => _isButtonDebouncing = true);
+
+                        // Dismiss keyboard first
+                        FocusScope.of(context).unfocus();
+
+                        // Wait a frame to ensure keyboard dismissal
+                        await Future.delayed(const Duration(milliseconds: 100));
+
+                        HapticFeedback.mediumImpact();
+                        await vm.generateViralRewrite(
+                          language: context.locale.languageCode,
+                          locale: Platform.localeName.replaceAll('_', '-'),
+                        );
+
+                        // Reset debounce after generation completes
+                        if (mounted) {
+                          setState(() => _isButtonDebouncing = false);
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.warning,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  disabledBackgroundColor: AppColors.surface,
+                  disabledForegroundColor: AppColors.textSecondary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: vm.isLoading
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Text(
+                            'Generating...',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Text(
+                        'viral_rewrite.generate_button'.tr(),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOutputSection(ViralRewriteViewModel vm) {
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.warning.withOpacity(0.15),
+                blurRadius: 24,
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Output header
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.warning,
+                            AppColors.warning.withOpacity(0.7),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'viral_rewrite.result_title'.tr(),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceBright,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          vm.isFavorited
+                              ? Icons.favorite
+                              : Icons.favorite_outline,
+                          size: 18,
+                        ),
+                        color: vm.isFavorited
+                            ? AppColors.error
+                            : AppColors.textPrimary,
+                        padding: const EdgeInsets.all(8),
+                        onPressed: () async {
+                          if (vm.isFavorited) {
+                            await vm.removeFromFavorites();
+                            _showFeedback(
+                              context,
+                              'Removed from favorites',
+                              color: Colors.grey,
+                            );
+                          } else {
+                            final result = await vm.saveToFavorites();
+                            final message =
+                                result == SaveFavoriteResult.alreadyExists
+                                ? 'Already in favorites!'
+                                : 'Saved to favorites!';
+                            final color =
+                                result == SaveFavoriteResult.alreadyExists
+                                ? AppColors.warning
+                                : AppColors.success;
+                            _showFeedback(context, message, color: color);
+                          }
+                        },
+                        tooltip: vm.isFavorited
+                            ? 'Remove from favorites'
+                            : 'Save to favorites',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.surfaceBright,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: IconButton(
+                        icon: const Icon(Icons.copy, size: 18),
+                        color: AppColors.textPrimary,
+                        padding: const EdgeInsets.all(8),
+                        onPressed: () => _copyToClipboard(context, vm.output!),
+                        tooltip: 'general.copy'.tr(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.warning.withOpacity(0.1),
+                        AppColors.warning.withOpacity(0.02),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: AppColors.warning.withOpacity(0.3),
+                    ),
+                  ),
+                  child: SelectableText(
+                    vm.output ?? "Error generating content.",
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                      height: 1.6,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 54,
+          width: double.infinity,
+          child: OutlinedButton(
+            onPressed: vm.clearOutput,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppColors.textPrimary,
+              side: BorderSide(color: Colors.white.withOpacity(0.12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: Text(
+              'viral_rewrite.new_button'.tr(),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

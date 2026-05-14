@@ -1,0 +1,9 @@
+My Optimistic Approach to Fixing the App's UI:
+Rather than editing 16 screens individually, we should tackle the root cause by establishing a Design System.
+
+Here is our step-by-step audit plan:
+
+Global Component Audit: We find where your primary widgets are housed (e.g., CustomButton, CustomTextField, TagChip).
+Strip Fixed Constraints: We remove all hardcoded height: 50 or width: 200 properties from these components. We replace them with padding, minConstraints, Flexible(), and Expanded(). This prevents multi-language text from ever breaking the UI again.
+Auto-Scaling Typography: For highly constrained spaces (like dialog buttons), we implement the auto_size_text package so if a German or Russian word is unnaturally long, the font scales down slightly before it causes a layout overflow.
+Icon Extrication: We perform a project-wide regex search for emojis in UI strings and systematically replace them with an Icon(Icons.auto_awesome, size: 16) equivalent widget.

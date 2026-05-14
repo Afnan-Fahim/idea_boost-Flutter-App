@@ -1,0 +1,100 @@
+--- lib/core/prompt_system/prompt_handler.dart
++++ lib/core/prompt_system/prompt_handler.dart
+@@ -345,21 +345,86 @@
+   String buildPrompt(PromptContext context, PromptTemplate template) {
+     debugPrint(
+       '📝 PromptBuilder: Assembling prompt with ${template.runtimeType}',
+     );
+ 
+-    // Use template to build base prompt
+-    String prompt = template.buildBasePrompt(context);
++    final sb = StringBuffer();
+ 
+-    // Add priority 2 enhancements (platform, tone, parameters)
+-    prompt = _addPriority2Enhancements(prompt, context);
++    // ==========================================
++    // 1) LANGUAGE
++    // ==========================================
++    sb.writeln('=========================================');
++    sb.writeln('1. LANGUAGE REQUIREMENT');
++    sb.writeln('=========================================');
++    sb.writeln('🚨 CRITICAL: You MUST generate your response EXCLUSIVELY in the following language: ${context.language.toUpperCase()}');
++    sb.writeln('Absolutely NO mixing of languages. ALL text in the response must be in this language.');
++    sb.writeln();
+ 
+-    // Add priority 3 enhancements (locale/cultural)
+-    prompt = _addPriority3Enhancements(prompt, context);
++    // ==========================================
++    // 2) PLATFORM IDENTITY
++    // ==========================================
++    sb.writeln('=========================================');
++    sb.writeln('2. PLATFORM IDENTITY');
++    sb.writeln('=========================================');
++    if (context.platform != null) {
++      sb.writeln('📱 Optimize content specifically for: ${context.platform}');
++    } else {
++      sb.writeln('📱 Platform: General/Agnostic');
++    }
++    sb.writeln();
+ 
+-    // Add priority 4 enhancements (relevance)
+-    prompt = _addPriority4Enhancements(prompt, context);
++    // ==========================================
++    // 3) TONE STRENGTH
++    // ==========================================
++    sb.writeln('=========================================');
++    sb.writeln('3. TONE STRENGTH');
++    sb.writeln('=========================================');
++    final pTone = context.tone;
++    final parsedTones = context.parameters?['selectedToneDescriptions'] ?? context.parameters?['selectedTones'];
++    if (pTone != null || parsedTones != null) {
++      if (pTone != null) sb.writeln('🎭 Base Tone: $pTone');
++      if (parsedTones != null) {
++        sb.writeln('🎭 Specific Tone Guidance: $parsedTones');
++      }
++    } else {
++      sb.writeln('🎭 Tone: Natural & Engaging');
++    }
++    sb.writeln();
++
++    // ==========================================
++    // 4) LOCALE BEHAVIOR
++    // ==========================================
++    sb.writeln('=========================================');
++    sb.writeln('4. LOCALE & CULTURAL BEHAVIOR');
++    sb.writeln('=========================================');
++    if (context.locale != null) {
++      sb.writeln(_getCulturalInstruction(context.locale!, context.language).trim());
++    }
++    if (context.isRtl) {
++      sb.writeln('⚠️ RTL Formatting: Ensure appropriate Right-To-Left display logic.');
++    }
++    sb.writeln();
++
++    // ==========================================
++    // 5) RELEVANCE & TASK INSTRUCTIONS (Base Prompt)
++    // ==========================================
++    sb.writeln('=========================================');
++    sb.writeln('5. RELEVANCE & TASK INSTRUCTIONS');
++    sb.writeln('=========================================');
++    if (context.domain != null) sb.writeln('💼 Domain: ${context.domain}');
++    if (context.audienceType != null) sb.writeln('👥 Target Audience: ${context.audienceType}');
++    if (context.conversationHistory != null && context.conversationHistory!.isNotEmpty) {
++      sb.writeln('📖 Context: ${context.conversationHistory!.length} previous exchanges');
++    }
++    sb.writeln();
++    sb.writeln(template.buildBasePrompt(context).trim());
++    sb.writeln();
+ 
+-    // Add priority 5 enhancements (JSON constraints)
+-    prompt = _addPriority5Enhancements(prompt, context);
++    // ==========================================
++    // 6) JSON FORMATTING
++    // ==========================================
++    sb.writeln('=========================================');
++    sb.writeln('6. OUTPUT FORMATTING (STRICT JSON)');
++    sb.writeln('=========================================');
++    sb.writeln(_addPriority5Enhancements('', context).trim());
+ 
+-    debugPrint('✅ PromptBuilder: Final prompt built (${prompt.length} chars)');
++    final prompt = sb.toString();

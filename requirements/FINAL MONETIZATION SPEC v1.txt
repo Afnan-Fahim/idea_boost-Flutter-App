@@ -1,0 +1,255 @@
+FINAL MONETIZATION SPEC v1
+(Tier-1 / Tier-2 / Tier-3)
+Status: FINAL / APPROVED
+Applies to: All platforms (iOS / Android)
+
+GOALS
+    • Protect AI cost
+    • Protect AdMob account
+    • Maximize Tier-1 revenue
+    • Allow safe expansion to Tier-2/3
+    • Prevent ad-farming, VPN abuse, and AI exploitation
+
+1. REGION TIERS
+Tier-1 (High-value markets)
+    • United States
+    • United Kingdom
+    • Australia
+    • Tier-1 EU countries
+PRO ENABLED
+Tier-2 (Mid-value markets)
+    • LATAM (Brazil, Mexico, etc.)
+    • MENA
+    • Turkey
+    • Selected Eastern Europe
+PRO DISABLED
+Tier-3 (Low-value / high-risk markets)
+    • India
+    • Philippines
+    • Pakistan
+    • Bangladesh
+    • Indonesia
+    • CIS
+    • Africa
+PRO DISABLED
+
+1.1 REGION TIER RESOLUTION (ANTI-VPN)
+Region tier is determined by the lowest value of:
+    • App Store / Play Store country (primary)
+    • Device locale (secondary)
+    • IP-based region (fallback)
+If mismatch is detected → user is downgraded to the lowest tier.
+Tier assignment is cached per install and re-evaluated only on app update.
+
+2. GLOBAL RULES (APPLY TO ALL TIERS)
+    • AI models:
+        ◦ Default → gpt-4.1-nano
+        ◦ Premium → gpt-4.1-mini (Tier-1 PRO only)
+    • All limits must be configurable via Remote Config
+    • Daily counters reset every 24h
+    • Hard caps must not be bypassable
+    • No unlimited AI access for free users
+    • No PII storage or account-based tracking
+
+2.1 OUTPUT LENGTH LIMITS (MANDATORY, SERVER-SIDE)
+    • All AI responses must be capped using max_output_tokens (server-side enforced; client values ignored).
+    • Limits must be configurable via Remote Config per tier and plan.
+Recommended defaults:
+    • Tier-1 (non-PRO / rewarded): max_output_tokens = 800
+    • Tier-2 (rewarded): max_output_tokens = 600
+    • Tier-3 (rewarded): max_output_tokens = 400
+    • Tier-1 PRO: max_output_tokens = 1600
+For non-PRO users (rewarded/free), responses must be concise and should not exceed the configured cap.
+Hard rule: AI generation is executed only after the server applies the token cap.
+Context control (cost safety)
+    • Limit conversation history sent to the model (e.g., last 6–10 messages)
+    • Enforce max user input length (server-side) to prevent excessive input token cost
+Remote Config keys (examples):
+    • maxOutputTokens_tier1_free
+    • maxOutputTokens_tier1_pro
+    • maxOutputTokens_tier2
+    • maxOutputTokens_tier3
+    • maxContextMessages
+    • maxUserInputChars
+
+3. TIER-1 MONETIZATION LOGIC
+(Business Core)
+3.1 FIRST-TIME ONBOARDING (ONE-TIME ONLY)
+    • 2 free AI generations
+    • No ads
+    • No paywall before usage
+    • Applies once per device/install
+UX: “Try 2 AI scripts for free”
+Trial protection
+Trial access is protected by device-level fingerprint:
+trialKey = hash(device_install_id + app_install_id)
+If trialKey has been used before:
+    • Trial is blocked
+    • User proceeds directly to standard monetization rules
+(No PII, store-compliant)
+
+3.2 DAILY USAGE AFTER TRIAL
+    • 0 daily free generations
+    • AI access via:
+        ◦ PRO subscription
+        ◦ Rewarded ads
+
+3.3 REWARDED ADS (TIER-1)
+    • 1 rewarded ad → unlocks 2 AI generations
+    • Max rewarded ads/day: 2
+    • Max AI/day (non-PRO): 4
+Limit message:
+“You’ve reached today’s AI limit. Come back tomorrow or upgrade to PRO.”
+
+3.4 PRO SUBSCRIPTION (TIER-1 ONLY)
+Benefits:
+    • No ads
+    • Unlimited access within caps
+    • Access to premium AI model
+Soft caps (UI-visible):
+    • Nano: 20/day
+    • Mini: 20/day
+Hard caps (server-side, hidden):
+    • Nano: 100/day
+    • Mini: 60/day
+If hard cap exceeded:
+    • AI access temporarily paused
+    • Automatic reset after 24h
+    • No user-visible penalty messaging
+
+3.5 AI MODEL ROUTING (TIER-1)
+IF user.plan == PRO AND quality == premium
+→ gpt-4.1-mini
+ELSE
+→ gpt-4.1-nano
+
+4. TIER-2 MONETIZATION LOGIC
+(Controlled Growth)
+4.1 ONBOARDING (ONE-TIME)
+    • 1 free AI generation
+    • No ads
+    • One-time only
+UX: “Try 1 AI script for free”
+(Protected by the same trialKey logic as Tier-1)
+
+4.2 DAILY USAGE
+    • 0 daily free
+    • AI access via rewarded ads only
+
+4.3 REWARDED ADS (TIER-2)
+    • 1 rewarded ad → 1 AI generation
+    • Max rewarded/day: 3
+    • Max AI/day: 3
+Limit message:
+“You’ve reached today’s limit. Come back tomorrow.”
+
+4.4 AI MODEL (TIER-2)
+    • Only gpt-4.1-nano
+    • Mini model disabled
+    • Premium quality option hidden
+
+4.5 PRO (TIER-2)
+    • PRO not available
+    • No subscriptions
+    • No paywalls
+    • No upgrade prompts
+UX clarification (if accessed):
+“This feature is currently available in selected regions.”
+
+5. TIER-3 MONETIZATION LOGIC
+(Zero-Risk Mode)
+5.1 AVAILABILITY
+Tier-3 may be:
+    • Fully disabled (recommended at launch), OR
+    • Enabled with hard ad-gated access
+
+5.2 ONBOARDING
+    • 0 free AI generations
+    • AI locked by default
+UX: “Watch a short ad to unlock today’s AI generation.”
+
+5.3 REWARDED ADS (TIER-3)
+    • Every AI generation requires a rewarded ad
+    • No bulk unlocks
+Limits:
+    • Max rewarded/day: 3
+    • Max AI/day: 3
+
+5.4 AI MODEL (TIER-3)
+    • Only gpt-4.1-nano
+    • Mini model disabled
+    • Premium options hidden
+
+5.5 PRO (TIER-3)
+    • PRO not available
+    • No subscriptions
+    • No trials
+    • No upgrade UI
+
+6. HARD SAFETY RULES (NON-NEGOTIABLE)
+Rule	Tier-1	Tier-2	Tier-3
+One-time free trial	Yes	Yes	No
+Daily free AI	No	No	No
+Rewarded ads	Yes	Yes	Yes
+Max AI/day (non-PRO)	4	3	3
+PRO available	Yes	No	No
+Mini model access	PRO only	No	No
+
+6.1 ABUSE DETECTION (LIGHTWEIGHT)
+Signals:
+    • Extremely high request frequency
+    • High prompt similarity ratio
+    • Continuous usage beyond normal session duration
+Mitigation:
+    • Temporary throttling
+    • Forced downgrade to nano model
+    • Silent cooldown (no UI penalties)
+
+6.2 ADMOB FAILSAFE MODE
+If AdMob fill rate drops below threshold or an account warning is detected:
+    • Rewarded ads disabled in Tier-2 and Tier-3
+    • AI access temporarily locked for non-PRO users
+    • Tier-1 PRO users remain unaffected
+
+7. REQUIRED FIRESTORE FIELDS
+{
+  "regionTier": "tier1" | "tier2" | "tier3",
+  "hasUsedTrial": true,
+  "trialKey": "string",
+  "aiNanoUsedToday": 0,
+  "aiMiniUsedToday": 0,
+  "rewardedAdsWatchedToday": 0,
+  "dailyResetAt": "timestamp"
+}
+
+8. ANALYTICS (NO NEW APIs)
+Required events:
+    • trial_started
+    • trial_completed
+    • rewarded_watched
+    • ai_generation_success
+    • ai_generation_blocked_limit
+    • pro_upgrade_clicked
+    • pro_subscription_started
+
+FINAL EXECUTIVE SUMMARY
+    • Tier-1 → subscription-driven revenue core
+    • Tier-2 → controlled rewarded monetization
+    • Tier-3 → optional traffic, zero burn risk
+    • PRO access strictly protected
+    • AI cost fully controlled
+    • AdMob risk isolated
+    • System is VPN-resistant, reinstall-resistant, and review-safe
+
+FINAL IMPLEMENTATION RULES (NON-NEGOTIABLE)
+    • This document is the single source of truth for implementation.
+    • Server-side enforcement is mandatory for:
+        ◦ daily limits / counters
+        ◦ rewarded validation (no client-trust)
+        ◦ token caps (max_output_tokens)
+    • AI must never execute if:
+        ◦ rewarded ad failed to load/show
+        ◦ reward callback was not received
+        ◦ server did not approve reward claim
+    • Any deviation or simplification requires written approval before coding.
+    • If any “must” rule is violated, the implementation is rejected.

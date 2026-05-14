@@ -1,0 +1,724 @@
+/// lib/core/prompt_system/prompt_handler.dart
+///
+/// Central Prompt Handler - Smart, minimal approach to prompt orchestration.
+/// Manages the priority-based assembly of prompts from ViewModels to backend.
+///
+/// ARCHITECTURE:
+/// ViewModels → PromptRequest → PromptHandler → PromptContext → PromptBuilder → PromptResult → AiRepository
+
+import 'package:flutter/foundation.dart';
+import 'prompt_template.dart';
+import 'models/prompt_request.dart';
+import 'models/prompt_context.dart';
+import 'models/prompt_result.dart';
+import 'validators/json_validator.dart';
+
+class PromptHandler {
+  /// Singleton instance
+  static final PromptHandler _instance = PromptHandler._internal();
+
+  factory PromptHandler() {
+    return _instance;
+  }
+
+  PromptHandler._internal();
+
+  /// The JSON validator for Priority 5 (JSON formatting & constraints)
+  final JsonValidator _jsonValidator = JsonValidator();
+
+  /// Safe cast to String - handles Map, List, String, or other types
+  String? _safeStringCast(dynamic value) {
+    if (value is String) return value;
+    if (value is Map) return value.toString();
+    if (value is List) return value.join(', ');
+    if (value == null) return null;
+    return value.toString();
+  }
+
+  /// ============ MAIN FLOW ============
+  ///
+  /// Process a prompt request from ViewModel through the priority system.
+  /// This is the main entry point for all generators.
+  ///
+  /// Flow:
+  /// 1. Receive PromptRequest from ViewModel
+  /// 2. Build PromptContext with all priorities applied
+  /// 3. Use PromptBuilder to assemble final prompt
+  /// 4. Validate against JSON constraints (Priority 5)
+  /// 5. Return PromptResult ready for AiRepository
+
+  Future<PromptResult> handlePromptRequest({
+    required String language,
+    required String userPrompt,
+    required PromptRequest request,
+    required String locale,
+    String? generatorType,
+  }) async {
+    try {
+      debugPrint(
+        '╔════════════════════════════════════════════════════════════════╗',
+      );
+      debugPrint(
+        '║ 🎯 PROMPT HANDLER: Processing Request                         ║',
+      );
+      debugPrint(
+        '╚════════════════════════════════════════════════════════════════╝',
+      );
+
+      // ✅ Step 1: Build PromptContext with priorities
+      final context = _buildPromptContext(
+        language: language,
+        userPrompt: userPrompt,
+        request: request,
+        locale: locale,
+        generatorType: generatorType,
+      );
+
+      debugPrint(context.debugPriorities());
+
+      // ✅ Step 2: Select appropriate template based on generator type
+      final template = _selectTemplate(generatorType);
+      debugPrint(
+        '📍 PromptHandler: Selected template: ${template.templateName}',
+      );
+
+      // ✅ Step 3: Build final prompt using PromptBuilder
+      final promptBuilder = PromptBuilder();
+      final finalPrompt = promptBuilder.buildPrompt(context, template);
+
+      debugPrint('''
+╔════════════════════════════════════════════════════════════════╗
+║                  📝 FINAL ASSEMBLED PROMPT                    ║
+╠════════════════════════════════════════════════════════════════╣
+$finalPrompt
+╚════════════════════════════════════════════════════════════════╝
+''');
+
+      // ✅ Step 4: Validate against JSON constraints (Priority 5)
+      final validationResult = _validatePrompt(
+        finalPrompt,
+        context.jsonConstraints,
+      );
+
+      // ✅ Step 5: Create and return PromptResult
+      final result = PromptResult(
+        finalPrompt: finalPrompt,
+        appliedContext: _contextToMap(context),
+        isValid: validationResult['isValid'] as bool,
+        validationErrors: List<String>.from(validationResult['errors'] as List),
+        executionInstructions: _generateExecutionInstructions(
+          context,
+          generatorType,
+        ),
+      );
+
+      debugPrint(result.toString());
+
+      return result;
+    } catch (e, stack) {
+      debugPrint('❌ PromptHandler ERROR: $e');
+      debugPrint('Stack: $stack');
+      return PromptResult(
+        finalPrompt: userPrompt,
+        appliedContext: {'error': e.toString()},
+        isValid: false,
+        validationErrors: [e.toString()],
+      );
+    }
+  }
+
+  /// ============ STEP 1: Build PromptContext with ALL PRIORITIES ============
+
+  PromptContext _buildPromptContext({
+    required String language,
+    required String userPrompt,
+    required PromptRequest request,
+    required String locale,
+    String? generatorType,
+  }) {
+    // Detect RTL languages
+    final isRtl = _isRtlLanguage(language);
+
+    // Determine cultural context from locale
+    final culturalContext = _determineCulturalContext(locale, language);
+
+    // Build the context with all priorities applied
+    return PromptContext(
+      // [1️⃣  PRIORITY 1: LANGUAGE - FOUNDATION]
+      language: language,
+
+      // [2️⃣  PRIORITY 2: PLATFORM, TONE, USER INPUT, JSON STRUCTURE]
+      platform: request.platform,
+      tone: request.tone,
+      userPrompt: userPrompt,
+      parameters: request.parameters,
+      jsonStructure: request.jsonStructure,
+
+      // [3️⃣  PRIORITY 3: LOCALE BEHAVIOR]
+      locale: locale,
+      isRtl: isRtl,
+      culturalContext: culturalContext,
+
+      // [4️⃣  PRIORITY 4: RELEVANCE]
+      conversationHistory: request.conversationHistory,
+      domain: _extractDomain(generatorType),
+      audienceType: _safeStringCast(request.parameters?['audienceType']),
+
+      // [5️⃣  PRIORITY 5: JSON FORMATTING & CONSTRAINTS]
+      jsonConstraints: request.jsonStructure,
+      enforceStrictJson: request.jsonStructure != null,
+
+      // Backend fields
+      rewardGrantToken: request.rewardGrantToken,
+      quality: request.quality ?? 'nano',
+    );
+  }
+
+  /// ============ STEP 2: Select Template Based on Generator Type ============
+
+  PromptTemplate _selectTemplate(String? generatorType) {
+    switch (generatorType?.toLowerCase()) {
+      case 'script':
+        return ScriptGeneratorTemplate();
+      case 'comment':
+        return CommentGeneratorTemplate();
+      case 'hashtag':
+        return HashtagGeneratorTemplate();
+      case 'viral_rewrite':
+        return ViralRewriteTemplate();
+      case 'shot_ideas':
+        return ShotIdeasTemplate();
+      case 'refinement':
+        return RefinementTemplate();
+      default:
+        return DefaultPromptTemplate();
+    }
+  }
+
+  /// ============ STEP 3: Validate Prompt Against JSON Constraints ============
+
+  Map<String, dynamic> _validatePrompt(
+    String prompt,
+    Map<String, dynamic>? constraints,
+  ) {
+    final errors = <String>[];
+    bool isValid = true;
+
+    if (constraints == null || constraints.isEmpty) {
+      return {'isValid': true, 'errors': errors};
+    }
+
+    // Validate against constraints
+    isValid = _jsonValidator.validatePrompt(prompt, constraints, errors);
+
+    return {'isValid': isValid, 'errors': errors};
+  }
+
+  /// ============ HELPER METHODS ============
+
+  bool _isRtlLanguage(String language) {
+    // Common RTL languages: Arabic, Hebrew, Farsi, Urdu
+    return ['ar', 'he', 'fa', 'ur'].contains(language.toLowerCase());
+  }
+
+  /// PATTERN FROM BACKEND (executed in executeAi.js):
+  /// ═══════════════════════════════════════════════════════════════════════
+  ///
+  /// The LANGUAGE parameter is the authoritative source for:
+  ///   • What language to generate content in
+  ///   • What language-specific tone/voice to use
+  ///   • Examples: "en", "ru", "hi", "ar", etc.
+  ///
+  /// The LOCALE parameter is the full OS locale and is used for:
+  ///   • Regional/cultural tone adaptation
+  ///   • Respecting cultural context (e.g., "en-PK" = English from Pakistan)
+  ///   • Examples: "en-US", "en-PK", "ru-RU", "ar-SA", etc.
+  ///
+  /// KEY INSIGHT: These can differ!
+  ///   Device locale: en-PK  (English from Pakistan)
+  ///   App language:  ru      (User switched app to Russian)
+  ///   → Generate in Russian, but respect Pakistan's cultural norms
+  ///
+  /// Cultural context = the full OS locale string (e.g., "en-PK", "ru-RU")
+  /// This is NOT mixing language + region, it's just the device's locale setting.
+  String _determineCulturalContext(String locale, String language) {
+    // Return the full locale as-is - it IS the cultural context
+    // Example: "en-PK" (device is set to English from Pakistan)
+    // The language param (e.g., "ru") determines WHAT language to generate in
+    // The locale param (e.g., "en-PK") determines CULTURAL TONE for that language
+    return locale;
+  }
+
+  String _extractDomain(String? generatorType) {
+    switch (generatorType?.toLowerCase()) {
+      case 'script':
+        return 'video_content';
+      case 'comment':
+        return 'social_engagement';
+      case 'hashtag':
+        return 'social_discovery';
+      case 'viral_rewrite':
+        return 'content_optimization';
+      case 'shot_ideas':
+        return 'creative_ideation';
+      case 'refinement':
+        return 'idea_enhancement';
+      default:
+        return 'general_content';
+    }
+  }
+
+  Map<String, dynamic> _contextToMap(PromptContext context) {
+    return {
+      'language': context.language,
+      'platform': context.platform,
+      'tone': context.tone,
+      'locale': context.locale,
+      'isRtl': context.isRtl,
+      'culturalContext': context.culturalContext,
+      'domain': context.domain,
+      'quality': context.quality,
+    };
+  }
+
+  String _generateExecutionInstructions(
+    PromptContext context,
+    String? generatorType,
+  ) {
+    final instructions = <String>[];
+
+    // Language instruction (Priority 1)
+    instructions.add('Generate response in ${context.language}.');
+
+    // Platform instruction (Priority 2)
+    if (context.platform != null) {
+      instructions.add('Optimize for ${context.platform} platform.');
+    }
+
+    // Tone instruction (Priority 2)
+    if (context.tone != null) {
+      instructions.add('Use a ${context.tone} tone.');
+    }
+
+    // RTL instruction (Priority 3)
+    if (context.isRtl) {
+      instructions.add('Format for RTL (right-to-left) language display.');
+    }
+
+    // Audience instruction (Priority 4)
+    if (context.audienceType != null) {
+      instructions.add('Target audience: ${context.audienceType}.');
+    }
+
+    // JSON instruction (Priority 5)
+    if (context.enforceStrictJson && context.jsonStructure != null) {
+      instructions.add(
+        'Return valid JSON with fields: ${(context.jsonStructure!.keys.toList()).join(", ")}',
+      );
+    }
+
+    return instructions.join('\n');
+  }
+
+  /// Debug method to show execution flow
+  void debugShowFlow(String generatorType, PromptRequest request) {
+    print('''
+╔════════════════════════════════════════════════════════════════╗
+║                 📊 PROMPT HANDLER FLOW                         ║
+╠════════════════════════════════════════════════════════════════╣
+║ Generator Type: $generatorType
+║ Platform: ${request.platform ?? "—"}
+║ Tone: ${request.tone ?? "—"}
+║ Quality: ${request.quality ?? "nano"}
+║ Has Reward Token: ${request.rewardGrantToken != null}
+║ Has JSON Structure: ${request.jsonStructure != null}
+║ Has Parameters: ${request.parameters != null}
+╚════════════════════════════════════════════════════════════════╝
+''');
+  }
+}
+
+/// ============ PROMPT BUILDER ============
+///
+/// Constructs the final prompt string using the PromptContext and Template.
+
+class PromptBuilder {
+  String buildPrompt(PromptContext context, PromptTemplate template) {
+    debugPrint(
+      '📝 PromptBuilder: Assembling prompt with ${template.runtimeType}',
+    );
+
+    // Use template to build base prompt
+    String prompt = template.buildBasePrompt(context);
+
+    // Add priority 2 enhancements (platform, tone, parameters)
+    prompt = _addPriority2Enhancements(prompt, context);
+
+    // Add priority 3 enhancements (locale/cultural)
+    prompt = _addPriority3Enhancements(prompt, context);
+
+    // Add priority 4 enhancements (relevance)
+    prompt = _addPriority4Enhancements(prompt, context);
+
+    // Add priority 5 enhancements (JSON constraints)
+    prompt = _addPriority5Enhancements(prompt, context);
+
+    debugPrint('✅ PromptBuilder: Final prompt built (${prompt.length} chars)');
+
+    return prompt;
+  }
+
+  String _addPriority2Enhancements(String prompt, PromptContext context) {
+    // Add platform-specific instructions
+    if (context.platform != null) {
+      prompt +=
+          '\n\n📱 Platform: Optimize specifically for ${context.platform}.';
+    }
+
+    // Add tone guidance
+    if (context.tone != null) {
+      prompt += '\n🎭 Tone: Use a ${context.tone} tone throughout.';
+    }
+
+    // Add parameters as additional guidance
+    if (context.parameters != null && context.parameters!.isNotEmpty) {
+      prompt += '\n\n⚙️ Additional Parameters:';
+      context.parameters!.forEach((key, value) {
+        prompt += '\n  • $key: $value';
+      });
+    }
+
+    return prompt;
+  }
+
+  String _addPriority3Enhancements(String prompt, PromptContext context) {
+    // [3️⃣ PRIORITY 3: LOCALE BEHAVIOR — Cultural & Tonal Adaptation]
+    // These instructions were previously applied in the backend (executeAi.js).
+    // They now live here in Priority 3 so the assembled prompt is self-contained.
+    final locale = context.locale;
+    final language = context.language;
+
+    if (locale != null) {
+      final instruction = _getCulturalInstruction(locale, language);
+      if (instruction.isNotEmpty) {
+        prompt += instruction;
+      }
+    }
+
+    // Add RTL guidance if needed
+    if (context.isRtl) {
+      prompt +=
+          '\n⚠️ RTL Language: Use appropriate RTL formatting and conventions.';
+    }
+
+    return prompt;
+  }
+
+  /// Returns the cultural/tonal instruction string for a given locale + language.
+  /// Three-tier lookup (mirrors the removed backend logic from executeAi.js):
+  ///   Tier 1 — Exact locale match : "en-PK", "ar-SA", "es-MX" …
+  ///   Tier 2 — Base language match: "fr-BE" → "fr", "de-LU" → "de" …
+  ///   Tier 3 — Fully unknown      : AI self-adaptation fallback
+  String _getCulturalInstruction(String locale, String language) {
+    // Derive the base language code from locale (e.g. "en-PK" → "en")
+    final langCode = language.isNotEmpty
+        ? language
+        : locale.split('-').first.toLowerCase();
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // LOCALE INSTRUCTIONS MAP — exact same strings as removed from executeAi.js
+    // ─────────────────────────────────────────────────────────────────────────
+    final localeInstructions = <String, String>{
+      // ══════════ ENGLISH & REGIONAL VARIANTS ══════════
+      'en': '\nLANGUAGE: English — Respond EXCLUSIVELY in English.\n'
+          'TONE: Confident, clear, and conversational — like a knowledgeable friend, '
+          'not a corporate manual. Be direct and purposeful. Use active voice. '
+          'Avoid filler phrases, over-hedging, or unnecessary softening.',
+
+      'en-US': '\nLANGUAGE: English (United States) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Confident, direct, and results-oriented. Conversational without being '
+          'casual. Get to the point fast — Americans value efficiency and clarity. '
+          'Active voice throughout. Avoid corporate jargon and hollow filler phrases.',
+
+      'en-GB': '\nLANGUAGE: English (United Kingdom) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Precise, articulate, and measured. Understated rather than enthusiastic. '
+          'Use British spelling (colour, organise, whilst). Intellectually rigorous. '
+          'Dry wit is acceptable. Never over-sell — let the substance speak.',
+
+      'en-AU': '\nLANGUAGE: English (Australia) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Direct, practical, and unpretentious. Friendly without being over-eager. '
+          'Straightforward and no-nonsense. Australians distrust hype — be grounded, '
+          'clear, and genuine. Conversational but professional.',
+
+      'en-IN': '\nLANGUAGE: English (India) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Warm, respectful, and contextually aware. Balance professionalism with '
+          'approachability. Acknowledge hierarchy and social context naturally. '
+          'Be clear, thorough, and educational. Avoid excessive casualness.',
+
+      'en-PK': '\nLANGUAGE: English (Pakistan) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Formal, respectful, and dignified. \'Sir/Ma\'am\' register is appropriate. '
+          'Hierarchy and seniority are respected — never be dismissive of authority. '
+          'Professional and structured. Warmth through courtesy, not casualness. '
+          'Avoid Western informality; maintain Pakistani professional etiquette.',
+
+      'en-NG': '\nLANGUAGE: English (Nigeria) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Dynamic, confident, and respectful. Professional yet vibrant. '
+          'Nigerians are direct and entrepreneurial — be substantive and ambitious. '
+          'Respectful of elders and titles. Energetic without being frivolous.',
+
+      'en-ZA': '\nLANGUAGE: English (South Africa) — Respond EXCLUSIVELY in English.\n'
+          'TONE: Professional, inclusive, and respectful. Formal in business contexts. '
+          'Acknowledge the diverse cultural landscape. Clear, accessible, and fair-minded. '
+          'Avoid cultural assumptions — speak to a broad, multi-background audience.',
+
+      // ══════════ URDU ══════════
+      'ur': '\nZABAN: Urdu — Sirf Urdu mein jawab dein (اردو).\n'
+          'LEHJA: Izzatdar, adabdar aur dil se qareeb. \'Aap\' ka istemal karein — '
+          'yeh izzat ki bunyad hai. Tehzeeb, akhlaq aur khandan ki qadroon ko '
+          'ahmiyat dein. Saf aur rawan Urdu likhein — nah zyada kathor, nah zyada casual.',
+
+      'ur-PK': '\nZABAN: Urdu (Pakistan) — Sirf Urdu mein jawab dein (اردو).\n'
+          'LEHJA: Izzatdar, adabdar aur professional. Dini aur samaji context ka khayal '
+          'rakhein. \'Aap\' hamesha istemal karein — yeh Pakistani tehzeeb ki pehchaan hai. '
+          'Izzat, waqar aur warmth — har baat mein. Saf, rawan aur qabil-e-fahm Urdu.',
+
+      // ══════════ RUSSIAN & REGIONAL VARIANTS ══════════
+      'ru': '\nЯЗЫК: Русский — Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке.\n'
+          'ТОН: Чёткий, выдержанный и профессиональный. Используй обращение «Вы». '
+          'В русской культуре уважение выражается через точность и структуру, а не '
+          'через теплоту. Избегай избыточной вежливости — она воспринимается как '
+          'неискренность. Пиши логично, по существу и без лишних слов.',
+
+      'ru-RU': '\nЯЗЫК: Русский (Россия) — Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке.\n'
+          'ТОН: Точный, структурированный и деловой. Обращение «Вы» обязательно. '
+          'Ясность и конкретика важнее любезностей. Без воды и шаблонных фраз. '
+          'Профессиональный тон без холодности — по-русски это и есть уважение.',
+
+      // ══════════ UZBEK & REGIONAL VARIANTS ══════════
+      'uz': '\nTIL: O\'zbek — FAQAT o\'zbek tilida yoz (Ўзбек).\n'
+          'OHANG: Samimiy, qalbdan va hurmatli. \'Siz\' shaklida murojaat qil — bu '
+          'o\'zbek madaniyatida izzat belgisidir. Oila, jamoa va odob-axloq qadriyatlarini '
+          'ulug\'la. Milliy ruh, mehmondo\'stlik va samimiyatni aks ettiruvchi iboralardan '
+          'foydalanish muhim. Sodda, ravon va tushunarli tilda yoz.',
+
+      'uz-UZ': '\nTIL: O\'zbek (O\'zbekiston) — FAQAT o\'zbek tilida yoz.\n'
+          'OHANG: Samimiy, hurmatli va jamoatchi. \'Siz\' bilan murojaat qil. '
+          'Oilaviy qadriyatlar, milliy g\'urur va mehmon-navozlikni aks ettir. '
+          'Sodda va ravon o\'zbek tilida yoz — nah rasmiy, nah befarq.',
+
+      // ══════════ SPANISH & REGIONAL VARIANTS ══════════
+      'es': '\nIDIOMA: Español — Responde EXCLUSIVAMENTE en español.\n'
+          'TONO: Cálido, expresivo y cercano. Adapta el registro: \'tú\' en tono casual, '
+          '\'usted\' en contextos formales. Reconoce siempre la situación del usuario antes '
+          'de ofrecer soluciones — la empatía primero, la solución después. '
+          'Apasionado pero conciso. Nunca grandilocuente.',
+
+      'es-ES': '\nIDIOMA: Español (España) — Responde EXCLUSIVAMENTE en español castellano.\n'
+          'TONO: Directo, incisivo y sofisticado. \'Tú\' en conversación casual, \'usted\' en '
+          'formal. Inteligente y matizado. Asertivo sin agresividad. Europeo y cultivado. '
+          'Los españoles valoran la claridad y el debate — no evites la franqueza.',
+
+      'es-MX': '\nIDIOMA: Español (México) — Responde EXCLUSIVAMENTE en español mexicano.\n'
+          'TONO: Cálido, respetuoso y humano. \'Usted\' en contextos profesionales. '
+          'La dignidad y el orgullo cultural importan — nunca condescendiente. '
+          'Accesible sin ser informal. Comunica con corazón y estructura.',
+
+      'es-AR': '\nIDIOMA: Español (Argentina) — Responde EXCLUSIVAMENTE en español rioplatense.\n'
+          'TONO: Directo, pasional y seguro. \'Vos\' en conversación, \'usted\' en formal. '
+          'Los argentinos valoran la honestidad y la profundidad intelectual. '
+          'Dinámico y auténtico. Cálido sin perder autoridad ni criterio.',
+
+      'es-CO': '\nIDIOMA: Español (Colombia) — Responde EXCLUSIVAMENTE en español colombiano.\n'
+          'TONO: Cálido, muy cortés y respetuoso. \'Usted\' es estándar incluso en casual. '
+          'Los colombianos son famosos por su cordialidad — honra esa cultura. '
+          'Profesional y accesible. Comunica confianza y cercanía al mismo tiempo.',
+
+      // ══════════ PORTUGUESE & REGIONAL VARIANTS ══════════
+      'pt': '\nIDIOMA: Português — Responda EXCLUSIVAMENTE em português brasileiro.\n'
+          'TOM: Descontraído, caloroso e direto ao ponto. Linguagem do dia a dia sem '
+          'perder clareza. Transmita proximidade e confiança — como uma conversa entre '
+          'pessoas que já se conhecem bem. Evite formalidade europeia excessiva.',
+
+      'pt-BR': '\nIDIOMA: Português (Brasil) — Responda EXCLUSIVAMENTE em português brasileiro.\n'
+          'TOM: Descontraído, caloroso e direto. Use \'você\' naturalmente. Próximo e '
+          'confiável. Os brasileiros valorizam calor humano e autenticidade — seja '
+          'genuíno, claro e acessível. Evite frieza ou distância desnecessária.',
+
+      'pt-PT': '\nIDIOMA: Português (Portugal) — Responda EXCLUSIVAMENTE em português europeu.\n'
+          'TOM: Formal, preciso e intelectualmente sólido. \'Você\' ou \'tu\' conforme contexto. '
+          'Estrutura e clareza são essenciais. Mais reservado que o Brasil — a formalidade '
+          'é respeito, não distância. Bem formulado e rigoroso.',
+
+      // ══════════ FRENCH & REGIONAL VARIANTS ══════════
+      'fr': '\nLANGUE: Français — Répondre EXCLUSIVEMENT en français.\n'
+          'TON: Précis, nuancé et intellectuellement engagé. \'Vous\' par défaut. '
+          'En français, la forme compte autant que le fond — soigne chaque formulation. '
+          'Évite les clichés et l\'enthousiasme excessif. Clarté élégante sur verbosité. '
+          'L\'esprit critique est une marque de respect, pas d\'hostilité.',
+
+      'fr-FR': '\nLANGUE: Français (France) — Répondre EXCLUSIVEMENT en français standard.\n'
+          'TON: Exigeant, nuancé et intellectuellement rigoureux. \'Vous\' obligatoire. '
+          'Valorise l\'élégance de la pensée et de la phrase. Critique constructive '
+          'bienvenue. Sophistiqué sans être inaccessible.',
+
+      'fr-CA': '\nLANGUE: Français (Canada / Québec) — Répondre EXCLUSIVEMENT en français québécois.\n'
+          'TON: Plus direct et chaleureux qu\'en France. \'Tu\' acceptable en contexte casual. '
+          'Identité culturelle québécoise distincte — pas de calques de la France. '
+          'Accessible, sincère et digne. La clarté prime sur l\'élégance formelle.',
+
+      // ══════════ ARABIC & REGIONAL VARIANTS ══════════
+      'ar': '\nاللغة: العربية — أجب حصراً باللغة العربية الفصحى المعاصرة.\n'
+          'الأسلوب: رفيع، بليغ ومحترم. ابدأ بتأسيس الثقة قبل الوصول إلى صلب الموضوع. '
+          'راعِ السياق الديني والاجتماعي دون افتراضات مسبقة. اللغة العربية ثرية — '
+          'استخدم هذه الثروة بحكمة. الكرم اللغوي والحفاظ على وجه المتحدث '
+          'جزء أصيل من التواصل الراقي.',
+
+      'ar-SA': '\nاللغة: العربية (المملكة العربية السعودية) — أجب حصراً بالعربية الفصحى.\n'
+          'الأسلوب: رسمي جداً، محترم وعميق الحساسية للسياق الديني والاجتماعي. '
+          'الدين والتقاليد حاضران في كل تواصل — احترمهما دون افتراض. '
+          'الكرامة والحفاظ على الوجه أولوية قصوى. تجنب أي صياغة قد تُفسَّر سلباً.',
+
+      'ar-EG': '\nاللغة: العربية (مصر) — أجب حصراً بالعربية مع مراعاة السياق المصري.\n'
+          'الأسلوب: رسمي ومحترم مع مرونة ثقافية. الكرامة والاحترام أساس التواصل. '
+          'المصريون يقدرون الدفء والذكاء معاً — كن متزناً وواضحاً. '
+          'ابنِ الثقة أولاً، ثم ادخل في الموضوع. الحفاظ على الوجه مهم جداً.',
+
+      'ar-AE': '\nاللغة: العربية (الإمارات) — أجب حصراً بالعربية الفصحى المعاصرة.\n'
+          'الأسلوب: احترافي، محترم وعالي الحساسية الثقافية. الإمارات بيئة متعددة '
+          'الثقافات — التنوع معترف به ومُحترَم. الجودة والوقار في كل رد. '
+          'الدين والعادات المحلية تُحترَم دون تعميم.',
+
+      // ══════════ GERMAN & REGIONAL VARIANTS ══════════
+      'de': '\nSPRACHE: Deutsch — Ausschließlich auf Deutsch antworten.\n'
+          'TON: Präzise, sachlich und respektvoll. \'Sie\' ist Pflicht. Klarheit ist '
+          'Höflichkeit — keine unnötige Ausschmückung. Strukturiere Antworten logisch, '
+          'antworte direkt und vermeide vage Formulierungen. Fachbegriffe nur, '
+          'wenn sie den Inhalt schärfen — niemals zur Schau gestellt.',
+
+      'de-DE': '\nSPRACHE: Deutsch (Deutschland) — Ausschließlich auf Deutsch antworten.\n'
+          'TON: Präzise, direkt und professionell. \'Sie\' ist Standard. Logische Struktur '
+          'ist Respekt. Deutsche schätzen Effizienz und Substanz — kein Smalltalk, '
+          'keine leeren Floskeln. Antworte direkt und mit Haltung.',
+
+      'de-AT': '\nSPRACHE: Deutsch (Österreich) — Ausschließlich auf Deutsch antworten.\n'
+          'TON: Höflich, sachlich und etwas wärmer als in Deutschland. \'Sie\' ist wichtig. '
+          'Österreichische Kommunikation schätzt Höflichkeit und kulturelle Eigenständigkeit. '
+          'Klar, strukturiert und respektvoll — mit einem Hauch Wiener Verbindlichkeit.',
+
+      'de-CH': '\nSPRACHE: Deutsch (Schweiz) — Ausschließlich auf Deutsch antworten.\n'
+          'TON: Sehr direkt, präzise und äußerst sachlich. \'Sie\' im professionellen Kontext. '
+          'Schweizer Pragmatismus: kein Aufwand für Aufwands willen. Effizient, verlässlich '
+          'und auf den Punkt. Keine Umschweife, kein Überschwang.',
+
+      // ══════════ HINDI & REGIONAL VARIANTS ══════════
+      'hi': '\nBHASHA: Hinglish — Hindi aur English ka natural mix use karo.\n'
+          'TONE: Dost jaisi — warm, relatable aur seedhi baat. Izzat zaroori hai, lekin '
+          'stiff mat bano. \'Aap\' use karo respect ke liye. Wahi words use karo jo log '
+          'actually bolte hain — jaise \'theek hai\', \'bilkul\', \'dekho\', \'suno yaar\' — '
+          'ek real, desi conversation ki tarah. Na zyada formal, na zyada filmy.',
+
+      'hi-IN': '\nBHASHA: Hinglish (India) — Hindi aur English ka natural mix use karo.\n'
+          'TONE: Warm, relatable aur dost jaisi. \'Aap\' se izzat dikhao. Local Indian context '
+          'samjho — hierarchy, family values aur social awareness important hai. '
+          'Real desi conversation style: accessible, genuine aur grounded. Koi bakwaas nahi.',
+
+      // ══════════ VIETNAMESE & REGIONAL VARIANTS ══════════
+      'vi': '\nNGÔN NGỮ: Tiếng Việt — Chỉ trả lời bằng tiếng Việt.\n'
+          'GIỌNG ĐIỆU: Lịch sự, chân thành và đúng mực. Chọn đại từ xưng hô phù hợp '
+          'với độ tuổi và hoàn cảnh — đây là nền tảng của giao tiếp tốt trong văn hóa '
+          'Việt Nam. Tôn trọng thứ bậc xã hội. Ưu tiên sự hòa thuận. '
+          'Tránh mọi phát ngôn gây mất mặt hoặc làm người khác không thoải mái.',
+
+      'vi-VN': '\nNGÔN NGỮ: Tiếng Việt (Việt Nam) — Chỉ trả lời bằng tiếng Việt.\n'
+          'GIỌNG ĐIỆU: Lịch sự, chân thành và đúng mực. Đại từ xưng hô chính xác là bắt buộc. '
+          'Tôn trọng thứ bậc và tuổi tác. Hòa thuận và tránh mất mặt là ưu tiên hàng đầu.',
+
+      // ══════════ INDONESIAN & REGIONAL VARIANTS ══════════
+      'id': '\nBAHASA: Bahasa Indonesia — Gunakan HANYA Bahasa Indonesia.\n'
+          'NADA: Hangat, sopan dan membumi. Bahasa sehari-hari yang santun — tidak terlalu '
+          'formal, tidak terlalu kasual. Utamakan kejelasan dan keharmonisan. '
+          'Hindari konfrontasi langsung — sampaikan kritik atau koreksi dengan cara '
+          'yang menjaga harga diri dan martabat semua pihak.',
+
+      'id-ID': '\nBAHASA: Bahasa Indonesia (Indonesia) — Gunakan HANYA Bahasa Indonesia.\n'
+          'NADA: Hangat, sopan dan membumi. Santun namun tidak kaku. Keharmonisan dan '
+          'rasa hormat adalah inti komunikasi Indonesia. Hindari konfrontasi langsung. '
+          'Sampaikan hal sulit dengan halus — menjaga harga diri itu wajib.',
+
+      // ══════════ MALAY & REGIONAL VARIANTS ══════════
+      'ms': '\nBAHASA: Bahasa Melayu — Gunakan HANYA Bahasa Melayu.\n'
+          'NADA: Berbudi bahasa, mesra dan penuh hormat. Gunakan \'Anda\' secara umum dan '
+          'laraskan ke \'Encik/Puan\' apabila perlu. Kesantunan dan semangat kekitaan adalah '
+          'teras komunikasi Melayu. Elakkan bahasa yang menyinggung atau menimbulkan '
+          'salah faham. Kejelasan dan keharmonisan adalah keutamaan.',
+
+      'ms-MY': '\nBAHASA: Bahasa Melayu (Malaysia) — Gunakan HANYA Bahasa Melayu.\n'
+          'NADA: Berbudi bahasa, mesra dan penuh hormat. \'Anda\' atau \'Encik/Puan\' mengikut '
+          'konteks. Kesantunan, kekitaan dan multikulturalisme dihormati. Elakkan isu '
+          'sensitif agama atau kaum. Kejelasan dan keharmonisan adalah keutamaan.',
+
+      'ms-BN': '\nBAHASA: Bahasa Melayu (Brunei) — Gunakan HANYA Bahasa Melayu.\n'
+          'NADA: Berbudi bahasa, hormat dan profesional. Sensitiviti budaya dan agama '
+          'sangat tinggi di Brunei — hormati ini sepenuhnya. \'Anda\' atau gelaran rasmi '
+          'mengikut konteks. Kesantunan adalah keutamaan mutlak.',
+    };
+
+    // Three-tier lookup
+    if (localeInstructions.containsKey(locale)) {
+      // Tier 1: Exact locale match
+      debugPrint('🌍 Priority 3 Locale [exact]: $locale');
+      return localeInstructions[locale]!;
+    } else if (localeInstructions.containsKey(langCode)) {
+      // Tier 2: Base language fallback
+      debugPrint('🌍 Priority 3 Locale [base-lang]: $locale → $langCode');
+      return localeInstructions[langCode]!;
+    } else {
+      // Tier 3: Unknown locale — AI self-adaptation
+      debugPrint('🌍 Priority 3 Locale [unmatched]: $locale');
+      return '\n\n📍 LOCALE: "$locale"\n'
+          'Detect and respond in the primary language of the "$locale" region. '
+          'Adapt your tone and cultural communication norms to match the '
+          '"$locale" region authentically. If the language cannot be determined, '
+          'default to English.';
+    }
+  }
+
+  String _addPriority4Enhancements(String prompt, PromptContext context) {
+    // Add relevance guidance
+    if (context.domain != null) {
+      prompt += '\n\n💼 Domain: ${context.domain}';
+    }
+
+    if (context.audienceType != null) {
+      prompt += '\n👥 Target Audience: ${context.audienceType}';
+    }
+
+    // Add conversation history context if present
+    if (context.conversationHistory != null &&
+        context.conversationHistory!.isNotEmpty) {
+      prompt +=
+          '\n📖 Conversation Context: ${context.conversationHistory!.length} previous exchanges';
+    }
+
+    return prompt;
+  }
+
+  String _addPriority5Enhancements(String prompt, PromptContext context) {
+    // Add JSON formatting instructions
+    if (context.enforceStrictJson && context.jsonStructure != null) {
+      prompt += '\n\n📋 JSON Format Required:';
+      prompt +=
+          '\nReturn response as valid JSON with these fields: ${(context.jsonStructure!.keys.toList()).join(', ')}';
+    }
+
+    // Add constraints
+    if (context.jsonConstraints != null) {
+      prompt += '\n\n🔒 Constraints:';
+      context.jsonConstraints!.forEach((key, value) {
+        prompt += '\n  • $key: $value';
+      });
+    }
+
+    return prompt;
+  }
+}

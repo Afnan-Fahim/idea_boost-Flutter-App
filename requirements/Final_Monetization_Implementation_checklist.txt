@@ -1,0 +1,184 @@
+Implementation Checklist (FINAL)
+Monetization v1.1 + Safe AdMob (Definition of Done)
+A) FINAL / NON-NEGOTIABLE RULES (MANDATORY)
+    • FINAL MONETIZATION SPEC v1.1 is the single source of truth.
+    • AdMob Integration Checklist (FINAL) rules are mandatory (reward callback + server validation + failsafe).
+    • Server-side enforcement is mandatory for:
+        ◦ daily limits / counters
+        ◦ rewarded validation (client is not trusted)
+        ◦ token caps (max_output_tokens)
+    • AI must never execute if:
+        ◦ rewarded ad failed to load/show
+        ◦ reward callback was not received
+        ◦ server did not approve reward claim
+    • Any deviation requires written approval before coding. Otherwise implementation is rejected.
+
+B) Region Tiering + VPN (RegionTier)
+    • Determine regionTier as the lowest of:
+        ◦ Store country (primary)
+        ◦ Device locale (secondary)
+        ◦ IP region (fallback)
+    • If mismatch → downgrade to lowest tier
+    • Cache tier per install; re-evaluate only on app update
+
+C) Trial Protection (Anti-Reinstall Farming)
+    • Implement trialKey fingerprint:
+trialKey = hash(device_install_id + app_install_id)
+    • If trialKey used before → trial blocked
+    • Trial rules:
+        ◦ Tier-1: 2 free AI generations (one-time)
+        ◦ Tier-2: 1 free AI generation (one-time)
+        ◦ Tier-3: 0 free (no trial)
+
+D) Daily Counters & Reset (Anti Date-Change)
+    • Daily reset must be based on server time (not device time)
+    • Required Firestore fields (must exist):
+        ◦ regionTier
+        ◦ hasUsedTrial
+        ◦ trialKey
+        ◦ aiNanoUsedToday
+        ◦ aiMiniUsedToday
+        ◦ rewardedAdsWatchedToday
+        ◦ dailyResetAt (server timestamp)
+
+E) Monetization Logic per Tier
+Tier-1
+    • After trial: 0 daily free
+    • AI access: PRO or Rewarded
+    • Rewarded: 1 ad → 2 AI generations
+    • Limits:
+        ◦ Max rewarded/day: 2
+        ◦ Max AI/day (non-PRO): 4
+    • PRO enabled:
+        ◦ No ads
+        ◦ Premium model access
+        ◦ “Unlimited” within caps
+    • PRO limits:
+        ◦ Soft cap (UI): 20/day nano + 20/day mini
+        ◦ Hard cap (server, hidden): 100/day nano + 60/day mini
+Tier-2
+    • After trial: 0 daily free
+    • AI access: Rewarded only
+    • Rewarded: 1 ad → 1 AI generation
+    • Limits:
+        ◦ Max rewarded/day: 3
+        ◦ Max AI/day: 3
+    • PRO disabled:
+        ◦ No subscriptions
+        ◦ No paywalls
+        ◦ No upgrade prompts
+    • Premium quality hidden, nano only
+Tier-3
+    • Optional: can be fully disabled
+    • 0 trial
+    • Rewarded: every AI requires 1 ad (no bulk unlock)
+    • Limits:
+        ◦ Max rewarded/day: 3
+        ◦ Max AI/day: 3
+    • PRO disabled, nano only
+
+F) AI Model Routing (Server)
+    • Default model: gpt-4.1-nano
+    • Tier-1 PRO + premium quality → gpt-4.1-mini
+    • Tier-2/3: nano only; premium UI hidden/disabled
+
+G) Token Cost Safety (Server-Side Only)
+    • Enforce response length via server-side max_output_tokens (client ignored)
+    • Defaults:
+        ◦ Tier-1 non-PRO/rewarded: max_output_tokens = 800
+        ◦ Tier-2: max_output_tokens = 600
+        ◦ Tier-3: max_output_tokens = 400
+        ◦ Tier-1 PRO: max_output_tokens = 1600
+    • Context cost control:
+        ◦ send only last 6–10 messages
+        ◦ enforce max user input length (server-side)
+Remote Config keys (examples):
+maxOutputTokens_tier1_free
+maxOutputTokens_tier1_pro
+maxOutputTokens_tier2
+maxOutputTokens_tier3
+maxContextMessages
+maxUserInputChars
+
+H) AdMob Integration (Rewarded ONLY)
+H1) Reward Granting (CRITICAL)
+    • AI unlock only after onUserEarnedReward
+    • Server-side reward claim required (client not trusted):
+        ◦ backend checks limits + idempotency
+        ◦ backend returns one-time rewardGrantToken
+        ◦ AI request must include rewardGrantToken or reject
+    • No AI execution on:
+        ◦ ad load fail
+        ◦ ad show fail
+        ◦ missing reward callback
+        ◦ server deny
+H2) Fill Rate Protection
+    • Track: onAdFailedToLoad, onAdFailedToShow
+    • Auto disable rewarded if fillRate < threshold (Remote Config)
+        ◦ Recommended: <60% for 30 minutes → disable
+    • When disabled: lock AI for non-PRO users
+H3) Policy-safe UI copy (must match tier logic)
+    • Tier-1: “Watch a short ad to unlock 2 AI generations.”
+    • Tier-2/3: “Watch a short ad to unlock 1 AI generation.”
+
+I) AdMob Failsafe Mode (Emergency Shutdown)
+Trigger failsafe if ANY:
+    • AdMob warning
+    • fill rate collapse
+    • suspicious rewarded spike
+    • AI executed without server-approved reward
+Actions (automatic):
+    • Disable rewarded ads for Tier-2/3
+    • Lock AI for non-PRO
+    • Tier-1 PRO unaffected
+    • Controlled via Remote Config / server flag
+Remote Config keys (examples):
+failsafeModeEnabled
+adsEnabled_tier1
+adsEnabled_tier2
+adsEnabled_tier3
+fillRateThreshold_tier2
+fillRateThreshold_tier3
+ecpmMinThreshold_tier2
+ecpmMinThreshold_tier3
+
+J) Abuse Control (Lightweight)
+Signals:
+    • very high request frequency
+    • high prompt similarity
+    • continuous long sessions
+Mitigation:
+    • throttling
+    • forced nano
+    • silent cooldown
+
+K) Analytics (Required)
+Must fire:
+    • trial_started, trial_completed
+    • rewarded_watched
+    • ai_generation_success
+    • ai_generation_blocked_limit
+    • pro_upgrade_clicked
+    • pro_subscription_started
+AdMob/reward pipeline events:
+    • rewarded_ad_requested, rewarded_ad_loaded, rewarded_ad_failed, rewarded_ad_rewarded, rewarded_ad_blocked_limit
+    • reward_claim_sent, reward_claim_approved, reward_claim_denied
+
+L) QA Tests (Must Pass)
+    • No internet
+    • VPN on/off
+    • low fill regions
+    • ad load fail / ad show fail
+    • missing reward callback
+    • app background/foreground during ad
+    • app killed during ad
+    • device date/time change (must NOT reset)
+If AI is granted in any failure case → reject.
+
+M) Acceptance Criteria (Definition of Done)
+Accepted ONLY if:
+    1. Impossible to get AI without server-approved reward claim (non-PRO)
+    2. Impossible to bypass limits by kill/background/date change
+    3. Tier-2/3 can be disabled instantly via Remote Config (failsafe)
+    4. Output length respects max_output_tokens per tier/plan
+    5. No ads shown before regionTier is resolved

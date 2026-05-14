@@ -1,0 +1,1475 @@
+// lib/modules/script_generator/view/script_generator_screen.dart
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:ideaboost/core/constants/colors.dart';
+
+import 'package:ideaboost/core/utils/helpers.dart';
+import 'package:ideaboost/data/models/idea_model.dart';
+import 'package:ideaboost/data/repository/favorites_repository.dart';
+import 'package:provider/provider.dart';
+import '../view_model/script_generator_view_model.dart';
+import 'package:ideaboost/data/repository/user_repository.dart';
+
+class ScriptGeneratorScreen extends StatefulWidget {
+  final IdeaModel? idea;
+  final String? initialPrompt;
+  final String? initialRewardToken;
+  final String? initialLength;
+  final String? initialVariation;
+  final String? initialEmotion;
+  final String? initialPlatform;
+  const ScriptGeneratorScreen({
+    Key? key,
+    this.idea,
+    this.initialPrompt,
+    this.initialRewardToken,
+    this.initialLength,
+    this.initialVariation,
+    this.initialEmotion,
+    this.initialPlatform,
+  }) : super(key: key);
+
+  @override
+  State<ScriptGeneratorScreen> createState() => _ScriptGeneratorScreenState();
+}
+
+class _ScriptGeneratorScreenState extends State<ScriptGeneratorScreen> {
+  bool _showParametersPanel = false;
+
+  void _showLimitExceededDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          backgroundColor: AppColors.surface,
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.warning,
+                            AppColors.warning.withOpacity(0.7),
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.lock_outline,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'script_generator.limit_dialog_title'.tr(),
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'script_generator.limit_dialog_subtitle'.tr(),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () async {
+                              Navigator.of(dialogContext).pop();
+                              final vm = Provider.of<ScriptGeneratorViewModel>(
+                                context,
+                                listen: false,
+                              );
+
+                              print(
+                                '🎬 OLD Dialog: Regenerating with token system',
+                              );
+
+                              // Token retrieval happens inside regenerate()
+                              if (vm.isComplete) {
+                                await vm.regenerate(
+                                  language: context.locale.languageCode,
+                                  locale: Platform.localeName.replaceAll(
+                                    '_',
+                                    '-',
+                                  ),
+                                );
+                              } else {
+                                await vm.startGeneration(
+                                  language: context.locale.languageCode,
+                                  locale: Platform.localeName.replaceAll(
+                                    '_',
+                                    '-',
+                                  ),
+                                );
+                              }
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.success,
+                              side: BorderSide(
+                                color: AppColors.success.withOpacity(0.3),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.play_circle_outline, size: 20),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'script_generator.reward_button'.tr(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.of(dialogContext).pop();
+                              showSnackBarSafe(
+                                context,
+                                SnackBar(
+                                  content: Text(
+                                    'script_generator.snack_pro_navigating'
+                                        .tr(),
+                                  ),
+                                  backgroundColor: AppColors.accent,
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.accent,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              'script_generator.go_pro_button'.tr(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceBright,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    color: AppColors.textSecondary,
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _modernCard({required Widget child, Color? glowColor}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+        boxShadow: glowColor != null
+            ? [
+                BoxShadow(
+                  color: glowColor.withOpacity(0.15),
+                  blurRadius: 24,
+                  spreadRadius: 0,
+                ),
+              ]
+            : null,
+      ),
+      child: child,
+    );
+  }
+
+  Widget _sectionHeader(String title, IconData icon, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.2), color.withOpacity(0.05)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+              letterSpacing: -0.2,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOptionChip({
+    required BuildContext context,
+    required String label,
+    required String value,
+    required bool isSelected,
+    required VoidCallback onTap,
+    IconData? icon,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: isSelected
+              ? LinearGradient(
+                  colors: [AppColors.accent, AppColors.accentLight],
+                )
+              : null,
+          color: isSelected ? null : AppColors.surfaceBright,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.accent.withOpacity(0.5)
+                : Colors.white.withOpacity(0.08),
+            width: isSelected ? 1.5 : 1,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.accent.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected ? Colors.white : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                color: isSelected ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final userRepository = context.read<UserRepository>();
+
+    return ChangeNotifierProvider(
+      create: (_) => ScriptGeneratorViewModel(
+        widget.idea,
+        userRepository,
+        initialPrompt: widget.initialPrompt,
+        initialRewardToken: widget.initialRewardToken,
+        initialLength: widget.initialLength,
+        initialVariation: widget.initialVariation,
+        initialEmotion: widget.initialEmotion,
+        initialPlatform: widget.initialPlatform,
+      ),
+      child: Consumer<ScriptGeneratorViewModel>(
+        builder: (context, vm, _) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final error = vm.errorMessage;
+            if (error != null) {
+              if (error.contains("daily limit") ||
+                  error.contains("Daily limit")) {
+                vm.clearError();
+                _showLimitExceededDialog(context);
+              } else {
+                showSnackBarSafe(
+                  context,
+                  SnackBar(
+                    content: Text(error),
+                    backgroundColor: AppColors.error,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                );
+                vm.clearError();
+              }
+            }
+          });
+
+          return Directionality(
+            textDirection: ui.TextDirection.ltr,
+            child: Scaffold(
+              backgroundColor: AppColors.backgroundTop,
+              body: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.backgroundTop,
+                      AppColors.backgroundBottom,
+                    ],
+                  ),
+                ),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppColors.surface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.08),
+                                ),
+                              ),
+                              child: IconButton(
+                                icon: const Icon(Icons.arrow_back, size: 20),
+                                color: AppColors.textPrimary,
+                                padding: EdgeInsets.zero,
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    vm.idea != null
+                                        ? 'script_generator.title_with_idea'
+                                              .tr()
+                                        : 'script_generator.title'.tr(),
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                      letterSpacing: -0.3,
+                                    ),
+                                  ),
+                                  if (vm.isStreaming)
+                                    Text(
+                                      'script_generator.generating'.tr(),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            if (vm.isComplete)
+                              Row(
+                                children: [
+                                  // Heart Button (toggle save/remove with SnackBar)
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: vm.isFavorited
+                                            ? AppColors.error.withOpacity(0.5)
+                                            : Colors.white.withOpacity(0.08),
+                                        width: vm.isFavorited ? 1.5 : 1,
+                                      ),
+                                      boxShadow: vm.isFavorited
+                                          ? [
+                                              BoxShadow(
+                                                color: AppColors.error
+                                                    .withOpacity(0.2),
+                                                blurRadius: 12,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ]
+                                          : null,
+                                    ),
+                                    child: IconButton(
+                                      icon: Icon(
+                                        vm.isFavorited
+                                            ? Icons.favorite
+                                            : Icons.favorite_outline,
+                                        size: 20,
+                                        color: vm.isFavorited
+                                            ? AppColors.error
+                                            : AppColors.textPrimary,
+                                      ),
+                                      color: AppColors.textPrimary,
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () async {
+                                        HapticFeedback.mediumImpact();
+                                        if (!vm.isFavorited) {
+                                          // Save to favorites (each generated script is unique)
+                                          await vm.saveToFavorites();
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'script_generator.snack_saved'
+                                                      .tr(),
+                                                ),
+                                                backgroundColor:
+                                                    AppColors.success,
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        } else {
+                                          final removed = await vm
+                                              .removeFromFavorites();
+                                          if (removed && context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'script_generator.snack_removed'
+                                                      .tr(),
+                                                ),
+                                                backgroundColor:
+                                                    AppColors.error,
+                                                behavior:
+                                                    SnackBarBehavior.floating,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  // Share Button
+                                  Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.08),
+                                      ),
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.ios_share,
+                                        size: 20,
+                                      ),
+                                      color: AppColors.textPrimary,
+                                      padding: EdgeInsets.zero,
+                                      onPressed: () => vm.copyAll(context),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      Expanded(
+                        child: ListView(
+                          controller: vm.scrollController,
+                          padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+                          children: [
+                            if (vm.showInputField) ...[
+                              _modernCard(
+                                glowColor: AppColors.accent,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            width: 48,
+                                            height: 48,
+                                            decoration: BoxDecoration(
+                                              gradient: LinearGradient(
+                                                colors: [
+                                                  AppColors.accent,
+                                                  AppColors.accentLight,
+                                                ],
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                            child: const Icon(
+                                              Icons.auto_awesome,
+                                              color: Colors.white,
+                                              size: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'script_generator.input_title'
+                                                      .tr(),
+                                                  style: TextStyle(
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.w600,
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                    letterSpacing: -0.3,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  'script_generator.input_subtitle'
+                                                      .tr(),
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    color:
+                                                        AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 24),
+
+                                      // LENGTH SELECTOR
+                                      Text(
+                                        'Length',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Super Short',
+                                            value: 'super_short',
+                                            isSelected:
+                                                vm.selectedLength ==
+                                                'super_short',
+                                            onTap: () => vm.selectedLength =
+                                                'super_short',
+                                            icon: Icons.flash_on,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Short',
+                                            value: 'short',
+                                            isSelected:
+                                                vm.selectedLength == 'short',
+                                            onTap: () =>
+                                                vm.selectedLength = 'short',
+                                            icon: Icons.trending_up,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Full',
+                                            value: 'full',
+                                            isSelected:
+                                                vm.selectedLength == 'full',
+                                            onTap: () =>
+                                                vm.selectedLength = 'full',
+                                            icon: Icons.schedule,
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 20),
+
+                                      // VARIATION SELECTOR
+                                      Text(
+                                        'Variation',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Default',
+                                            value: 'default',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'default',
+                                            onTap: () => vm.selectedVariation =
+                                                'default',
+                                            icon: Icons.adjust,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Comedy',
+                                            value: 'comedy',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'comedy',
+                                            onTap: () =>
+                                                vm.selectedVariation = 'comedy',
+                                            icon: Icons.emoji_emotions,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Cringe',
+                                            value: 'cringe',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'cringe',
+                                            onTap: () =>
+                                                vm.selectedVariation = 'cringe',
+                                            icon: Icons.sentiment_dissatisfied,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Dramatic',
+                                            value: 'dramatic',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'dramatic',
+                                            onTap: () => vm.selectedVariation =
+                                                'dramatic',
+                                            icon: Icons.theaters,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Romantic',
+                                            value: 'romantic',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'romantic',
+                                            onTap: () => vm.selectedVariation =
+                                                'romantic',
+                                            icon: Icons.favorite,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Poor Country',
+                                            value: 'poor_country',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'poor_country',
+                                            onTap: () => vm.selectedVariation =
+                                                'poor_country',
+                                            icon: Icons.home_work,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'School',
+                                            value: 'school',
+                                            isSelected:
+                                                vm.selectedVariation ==
+                                                'school',
+                                            onTap: () =>
+                                                vm.selectedVariation = 'school',
+                                            icon: Icons.school,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'NPC',
+                                            value: 'npc',
+                                            isSelected:
+                                                vm.selectedVariation == 'npc',
+                                            onTap: () =>
+                                                vm.selectedVariation = 'npc',
+                                            icon: Icons.smart_toy,
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 20),
+
+                                      // EMOTION SELECTOR
+                                      Text(
+                                        'Emotion',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Neutral',
+                                            value: 'neutral',
+                                            isSelected:
+                                                vm.selectedEmotion == 'neutral',
+                                            onTap: () =>
+                                                vm.selectedEmotion = 'neutral',
+                                            icon: Icons.face,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Funny',
+                                            value: 'funny',
+                                            isSelected:
+                                                vm.selectedEmotion == 'funny',
+                                            onTap: () =>
+                                                vm.selectedEmotion = 'funny',
+                                            icon:
+                                                Icons.sentiment_very_satisfied,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Panic',
+                                            value: 'panic',
+                                            isSelected:
+                                                vm.selectedEmotion == 'panic',
+                                            onTap: () =>
+                                                vm.selectedEmotion = 'panic',
+                                            icon: Icons.warning,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Calm',
+                                            value: 'calm',
+                                            isSelected:
+                                                vm.selectedEmotion == 'calm',
+                                            onTap: () =>
+                                                vm.selectedEmotion = 'calm',
+                                            icon: Icons.self_improvement,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Overacting',
+                                            value: 'overacting',
+                                            isSelected:
+                                                vm.selectedEmotion ==
+                                                'overacting',
+                                            onTap: () => vm.selectedEmotion =
+                                                'overacting',
+                                            icon: Icons.whatshot,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Cinematic',
+                                            value: 'cinematic',
+                                            isSelected:
+                                                vm.selectedEmotion ==
+                                                'cinematic',
+                                            onTap: () => vm.selectedEmotion =
+                                                'cinematic',
+                                            icon: Icons.movie,
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 20),
+
+                                      // PLATFORM SELECTOR
+                                      Text(
+                                        'Platform',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textPrimary,
+                                          letterSpacing: -0.2,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: [
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'TikTok',
+                                            value: 'tiktok',
+                                            isSelected:
+                                                vm.selectedPlatform == 'tiktok',
+                                            onTap: () =>
+                                                vm.selectedPlatform = 'tiktok',
+                                            icon: Icons.music_note,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Reels',
+                                            value: 'reels',
+                                            isSelected:
+                                                vm.selectedPlatform == 'reels',
+                                            onTap: () =>
+                                                vm.selectedPlatform = 'reels',
+                                            icon: Icons.play_circle_outline,
+                                          ),
+                                          _buildOptionChip(
+                                            context: context,
+                                            label: 'Shorts',
+                                            value: 'shorts',
+                                            isSelected:
+                                                vm.selectedPlatform == 'shorts',
+                                            onTap: () =>
+                                                vm.selectedPlatform = 'shorts',
+                                            icon: Icons.video_library,
+                                          ),
+                                        ],
+                                      ),
+
+                                      const SizedBox(height: 24),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: AppColors.surfaceBright,
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(
+                                              0.06,
+                                            ),
+                                          ),
+                                        ),
+                                        child: TextField(
+                                          controller: vm.promptController,
+                                          onChanged: (v) => vm.userPrompt = v,
+                                          maxLines: 7,
+                                          style: const TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 15,
+                                            height: 1.5,
+                                          ),
+                                          decoration: InputDecoration(
+                                            hintText:
+                                                "What's your Idea to generate Script?",
+                                            hintStyle: TextStyle(
+                                              color: AppColors.textSecondary,
+                                            ),
+                                            border: InputBorder.none,
+                                            contentPadding:
+                                                const EdgeInsets.all(20),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        height: 54,
+                                        child: ElevatedButton(
+                                          onPressed:
+                                              (vm.isStreaming ||
+                                                  vm.userPrompt.trim().isEmpty)
+                                              ? null
+                                              : () async {
+                                                  HapticFeedback.mediumImpact();
+
+                                                  print(
+                                                    '🎬 Generate button pressed',
+                                                  );
+
+                                                  // Check if ad is required
+                                                  final needsAd = await vm
+                                                      .needsRewardedAd();
+
+                                                  print(
+                                                    '🎬 Needs ad: $needsAd',
+                                                  );
+
+                                                  if (needsAd) {
+                                                    print(
+                                                      '🎬 Attempting generation with token system...',
+                                                    );
+                                                    // Token retrieval happens inside generateScript()
+                                                    print(
+                                                      '🎬 Starting generation with token',
+                                                    );
+                                                    await vm.startGeneration(
+                                                      language: context
+                                                          .locale
+                                                          .languageCode,
+                                                      locale: Platform
+                                                          .localeName
+                                                          .replaceAll('_', '-'),
+                                                    );
+                                                  } else {
+                                                    // No ad needed (trial or PRO)
+                                                    print(
+                                                      '🎬 No ad needed, starting generation',
+                                                    );
+                                                    await vm.startGeneration(
+                                                      language: context
+                                                          .locale
+                                                          .languageCode,
+                                                      locale: Platform
+                                                          .localeName
+                                                          .replaceAll('_', '-'),
+                                                    );
+                                                  }
+                                                },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.accent,
+                                            foregroundColor: Colors.white,
+                                            elevation: 0,
+                                            disabledBackgroundColor:
+                                                AppColors.surface,
+                                            disabledForegroundColor:
+                                                AppColors.textSecondary,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                            ),
+                                          ),
+                                          child: vm.isStreaming
+                                              ? Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    const SizedBox(
+                                                      width: 18,
+                                                      height: 18,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            color: Colors.white,
+                                                            strokeWidth: 2,
+                                                          ),
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Text(
+                                                      'script_generator.generating_magic'
+                                                          .tr(),
+                                                      style: const TextStyle(
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                )
+                                              : Text(
+                                                  'script_generator.generate_button'
+                                                      .tr(),
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+
+                            if (vm.isStreaming)
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 60,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      SizedBox(
+                                        width: 40,
+                                        height: 40,
+                                        child: CircularProgressIndicator(
+                                          color: AppColors.accent,
+                                          strokeWidth: 3,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        'script_generator.generating_script'
+                                            .tr(),
+                                        style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            if (vm.hook.isNotEmpty)
+                              _modernCard(
+                                glowColor: AppColors.error,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _sectionHeader(
+                                        'script_generator.hook_title'.tr(),
+                                        Icons.flash_on,
+                                        AppColors.error,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      SelectableText(
+                                        vm.hook,
+                                        style: const TextStyle(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.textPrimary,
+                                          height: 1.3,
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            if (vm.voiceover.isNotEmpty)
+                              _modernCard(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _sectionHeader(
+                                        'script_generator.voiceover_title'.tr(),
+                                        Icons.record_voice_over,
+                                        AppColors.accent,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      ...vm.voiceover.map(
+                                        (line) => Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 16,
+                                          ),
+                                          child: SelectableText(
+                                            line,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              height: 1.6,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            if (vm.shots.isNotEmpty)
+                              _modernCard(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _sectionHeader(
+                                        'script_generator.shots_title'.tr(),
+                                        Icons.videocam,
+                                        AppColors.success,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      ...vm.shots.asMap().entries.map(
+                                        (e) => Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 16,
+                                          ),
+                                          child: Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Container(
+                                                width: 32,
+                                                height: 32,
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: [
+                                                      AppColors.success,
+                                                      AppColors.success
+                                                          .withOpacity(0.7),
+                                                    ],
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                ),
+                                                child: Center(
+                                                  child: Text(
+                                                    "${e.key + 1}",
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: SelectableText(
+                                                  e.value,
+                                                  style: const TextStyle(
+                                                    fontSize: 15,
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                    height: 1.5,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            if (vm.cta.isNotEmpty)
+                              _modernCard(
+                                glowColor: AppColors.warning,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    children: [
+                                      _sectionHeader(
+                                        'script_generator.cta_title'.tr(),
+                                        Icons.campaign,
+                                        AppColors.warning,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              AppColors.warning.withOpacity(
+                                                0.15,
+                                              ),
+                                              AppColors.warning.withOpacity(
+                                                0.05,
+                                              ),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          border: Border.all(
+                                            color: AppColors.warning
+                                                .withOpacity(0.3),
+                                          ),
+                                        ),
+                                        child: SelectableText(
+                                          vm.cta,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.textPrimary,
+                                            height: 1.4,
+                                            letterSpacing: -0.2,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                            if (vm.hashtags.isNotEmpty)
+                              _modernCard(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _sectionHeader(
+                                        'script_generator.hashtags_title'.tr(),
+                                        Icons.tag,
+                                        AppColors.accentLight,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 8,
+                                        children: vm.hashtags
+                                            .map(
+                                              (tag) => Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 14,
+                                                      vertical: 8,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.accentLight
+                                                      .withOpacity(0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(10),
+                                                  border: Border.all(
+                                                    color: AppColors.accentLight
+                                                        .withOpacity(0.3),
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  tag,
+                                                  style: const TextStyle(
+                                                    color:
+                                                        AppColors.accentLight,
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                            .toList(),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+
+                      if (vm.isComplete)
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface.withOpacity(0.95),
+                            border: Border(
+                              top: BorderSide(
+                                color: Colors.white.withOpacity(0.08),
+                              ),
+                            ),
+                          ),
+                          child: SafeArea(
+                            top: false,
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 54,
+                                    child: OutlinedButton(
+                                      onPressed: () async {
+                                        HapticFeedback.mediumImpact();
+
+                                        // Check if ad is required
+                                        final needsAd = await vm
+                                            .needsRewardedAd();
+
+                                        if (needsAd) {
+                                          // Token retrieval happens inside regenerate()
+                                          await vm.regenerate(
+                                            language:
+                                                context.locale.languageCode,
+                                            locale: Platform.localeName
+                                                .replaceAll('_', '-'),
+                                          );
+                                        } else {
+                                          // No ad needed
+                                          await vm.regenerate(
+                                            language:
+                                                context.locale.languageCode,
+                                            locale: Platform.localeName
+                                                .replaceAll('_', '-'),
+                                          );
+                                        }
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppColors.textPrimary,
+                                        side: BorderSide(
+                                          color: Colors.white.withOpacity(0.12),
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.refresh, size: 20),
+                                          const SizedBox(width: 8),
+                                          Flexible(
+                                            child: Text(
+                                              'script_generator.regenerate_button'
+                                                  .tr(),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 54,
+                                    child: ElevatedButton(
+                                      onPressed: () => vm.copyAll(context),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.accent,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(
+                                            Icons.content_copy,
+                                            size: 18,
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Flexible(
+                                            child: Text(
+                                              'script_generator.copy_all_button'
+                                                  .tr(),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 13,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}

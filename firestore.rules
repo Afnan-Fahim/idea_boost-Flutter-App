@@ -1,0 +1,106 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection - users can read/write their own document
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId);
+      
+      // Subcollections under users - userId is available from parent scope
+      match /history/{historyId} {
+        allow read, write: if isOwner(userId);
+        
+        // Nested subcollection for logs - userId still in scope from parent
+        match /logs/{logId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+      
+      match /favorites/{favoriteId} {
+        allow read, write: if isOwner(userId);
+        
+        // Nested subcollections - userId still in scope from users parent match
+        match /types/{type}/items/{itemId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+      
+      match /rewardTokens/{tokenId} {
+        allow read: if isOwner(userId);
+        // Write is handled by backend only
+        allow write: if false;
+      }
+      
+      match /activeRewardTokens/{tokenId} {
+        allow read: if isOwner(userId);
+        // Write is handled by backend only
+        allow write: if false;
+      }
+      
+      match /trialKeys/{keyId} {
+        allow read: if isOwner(userId);
+        // Write is handled by backend only
+        allow write: if false;
+      }
+    }
+    
+    // Trial keys collection (global) - read-only for authenticated users
+    match /trialKeys/{keyId} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only backend can create/modify
+    }
+    
+    // History collection (top-level) - users can read/write their own history logs
+    match /history/{userId} {
+      allow read, write: if isOwner(userId);
+      
+      // Logs subcollection under history - userId is bound from parent match
+      match /logs/{logId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // Favorites collection (top-level) - users can read/write their own favorites
+    match /favorites/{userId} {
+      allow read, write: if isOwner(userId);
+      
+      // Flat items subcollection (legacy path) - userId is bound from parent match
+      match /items/{itemId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Types subcollection under favorites - userId is bound from parent match
+      match /types/{type} {
+        allow read, write: if isOwner(userId);
+        
+        // Items subcollection under types - userId is bound from parent match
+        match /items/{itemId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+    }
+    
+    // System collection - authenticated users can read (for resetLock, etc)
+    match /system/{document=**} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only backend can write
+    }
+    
+    // Default deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
