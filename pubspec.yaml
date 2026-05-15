@@ -62,6 +62,7 @@ dependencies:
   http: ^1.2.2
   url_launcher: ^6.3.2
   flutter_svg: ^2.0.0
+  app_links: ^6.3.2
   #easy_localization_loader: ^1.0.0
 
 

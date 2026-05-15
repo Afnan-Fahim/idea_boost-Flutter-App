@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
 import '../../../data/repository/auth_repository.dart';
 
 class LoginViewModel extends ChangeNotifier {
@@ -280,6 +281,26 @@ class LoginViewModel extends ChangeNotifier {
     } catch (e) {
       errorMessage = 'errors.sign_out_failed'.tr();
       notifyListeners();
+    }
+  }
+
+  /// ---------------------------
+  /// SEND PASSWORD RESET EMAIL (Deep Link Strategy)
+  /// ---------------------------
+  Future<bool> sendPasswordResetEmail(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse(
+          'https://sendcustomresetemail-onbmw23m6a-uc.a.run.app',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('❌ Custom Reset Email Error: $e');
+      return false;
     }
   }
 

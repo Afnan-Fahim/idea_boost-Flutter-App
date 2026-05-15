@@ -410,8 +410,7 @@ class _LoginScreenState extends State<LoginScreen>
                                             context,
                                             SnackBar(
                                               content: AutoSizeText(
-                                                vm.errorMessage ??
-                                                    'login.failed'.tr(),
+                                                'Check your email to open the secure reset page',
                                                 maxLines: 2,
                                                 minFontSize: 10,
                                                 textAlign: TextAlign.center,
@@ -806,48 +805,56 @@ class _LoginScreenState extends State<LoginScreen>
                                     if (email.isEmpty) return;
                                     setState(() => isLoading = true);
                                     try {
-                                      await FirebaseAuth.instance
-                                          .sendPasswordResetEmail(email: email);
+                                      final vm = context.read<LoginViewModel>();
+                                      final success =
+                                          await vm.sendPasswordResetEmail(
+                                        email,
+                                      );
                                       if (ctx.mounted) Navigator.pop(ctx);
                                       if (context.mounted) {
-                                        showSnackBarSafe(
-                                          context,
-                                          SnackBar(
-                                            content: AutoSizeText(
-                                              'login.reset_email_sent'.tr(),
-                                              maxLines: 2,
-                                              minFontSize: 10,
-                                              textAlign: TextAlign.center,
+                                        if (success) {
+                                          showSnackBarSafe(
+                                            context,
+                                            SnackBar(
+                                              content: AutoSizeText(
+                                                'Check your email to open the secure reset page',
+                                                maxLines: 2,
+                                                minFontSize: 10,
+                                                textAlign: TextAlign.center,
+                                              ),
+                                              backgroundColor: Colors.green,
+                                              behavior:
+                                                  SnackBarBehavior.floating,
                                             ),
-                                            backgroundColor: Colors.green,
-                                            behavior: SnackBarBehavior.floating,
-                                          ),
-                                        );
+                                          );
+                                        } else {
+                                          showSnackBarSafe(
+                                            context,
+                                            SnackBar(
+                                              content: AutoSizeText(
+                                                'login.reset_email_failed'.tr(),
+                                                maxLines: 2,
+                                                minFontSize: 10,
+                                                textAlign: TextAlign.center,
+                                              ),
+                                              backgroundColor: const Color(
+                                                0xFFFF6B6B,
+                                              ),
+                                              behavior:
+                                                  SnackBarBehavior.floating,
+                                            ),
+                                          );
+                                        }
                                       }
-                                    } on FirebaseAuthException catch (e) {
+                                    } catch (e) {
                                       if (ctx.mounted) Navigator.pop(ctx);
                                       if (context.mounted) {
-                                        // Map specific Firebase error codes to user-friendly messages; use generic for others
-                                        final message = () {
-                                          switch (e.code) {
-                                            case 'invalid-email':
-                                              return 'errors.invalid_email_format'
-                                                  .tr();
-                                            case 'user-not-found':
-                                              return 'errors.account_not_found'
-                                                  .tr();
-                                            case 'network-request-failed':
-                                              return 'errors.no_internet'.tr();
-                                            default:
-                                              return 'errors.something_went_wrong_try_again'
-                                                  .tr();
-                                          }
-                                        }();
                                         showSnackBarSafe(
                                           context,
                                           SnackBar(
                                             content: AutoSizeText(
-                                              message,
+                                              'errors.something_went_wrong_try_again'
+                                                  .tr(),
                                               maxLines: 2,
                                               minFontSize: 10,
                                               textAlign: TextAlign.center,

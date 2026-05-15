@@ -11,7 +11,10 @@ import 'core/services/crashlytics_service.dart';
 import 'modules/auth/view/signup_screen.dart';
 import 'modules/home/view/home_screen.dart';
 import 'modules/paywall/view/paywall_screen.dart';
+import 'modules/auth/view/reset_password_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:app_links/app_links.dart';
+import 'dart:async';
 import 'package:provider/provider.dart';
 import 'data/repository/auth_repository.dart';
 import 'modules/auth/view_model/login_view_model.dart';
@@ -107,6 +110,7 @@ class AppRoutes {
     signup: (_) => const SignupScreen(),
     home: (_) => const HomeScreen(),
     paywall: (_) => const PaywallScreen(),
+    // The reset password screen will be shown when the deep link is triggered
   };
 }
 
@@ -118,6 +122,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -126,7 +133,54 @@ class _MyAppState extends State<MyApp> {
     // This keeps the app responsive and splash screen appears immediately
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _initializeDeferredServices();
+      _initDeepLinks();
     });
+  }
+
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // Handle links when app is already running
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+
+    // Handle link when app is started from cold boot
+    final initialUri = await _appLinks.getInitialLink();
+    if (initialUri != null) {
+      _handleDeepLink(initialUri);
+    }
+  }
+
+  void _handleDeepLink(Uri uri) {
+    debugPrint('🔗 Incoming Deep Link: $uri');
+
+    // 1. Handle standard Firebase HTTPS links
+    if (uri.queryParameters.containsKey('oobCode') &&
+        (uri.queryParameters['mode'] == 'resetPassword' || 
+         uri.path.contains('/auth/action'))) {
+      final oobCode = uri.queryParameters['oobCode']!;
+      _navigateToReset(oobCode);
+    } 
+    // 2. Handle our custom Magic Scheme: ideaboost://reset-password?oobCode=...
+    else if (uri.scheme == 'ideaboost' && uri.host == 'reset-password') {
+      final oobCode = uri.queryParameters['oobCode'];
+      if (oobCode != null) _navigateToReset(oobCode);
+    }
+  }
+
+  void _navigateToReset(String oobCode) {
+    navigatorKey.currentState?.push(
+      MaterialPageRoute(
+        builder: (_) => ResetPasswordScreen(oobCode: oobCode),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
   }
 
   /// Initialize services that don't need to block app startup

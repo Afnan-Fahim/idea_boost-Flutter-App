@@ -22,6 +22,7 @@ const remoteConfigHelper = require("./common/remoteConfigHelper");
 const generateAi = require("./endpoints/generateAi");
 const claimReward = require("./endpoints/claimReward");
 const testCheatProUpgrade = require("./endpoints/testCheatProUpgrade");
+const sendCustomResetEmail = require("./endpoints/sendCustomResetEmail");
 
 // Import Firestore triggers
 const onUserCreate = require("./triggers/onUserCreate");
@@ -218,6 +219,14 @@ exports.testCheatProUpgrade = onRequest(
     testCheatProUpgrade,
 );
 
+/**
+ * POST /api/sendCustomResetEmail
+ * Send professional branded reset email
+ * Request: { email }
+ * Response: { success, message }
+ */
+exports.sendCustomResetEmail = sendCustomResetEmail;
+
 // ════════════════════════════════════════════════════════════════
 // HEALTH CHECK ENDPOINT (optional, for monitoring)
 // ════════════════════════════════════════════════════════════════
@@ -243,5 +252,6 @@ logger.info("  - POST /api/generateAi (AI generation)");
 logger.info("  - POST /api/claimReward (Reward claiming)");
 logger.info("  - POST /api/testCheatProUpgrade (Test cheat: Enable PRO)");
 logger.info("  - GET /health (Health check)");
+logger.info("  - POST /api/sendCustomResetEmail (Professional Reset Email)");
 logger.info("  - TRIGGER: onUserCreated (Auto-resolve regionTier)");
 logger.info("  - SCHEDULED: Daily reset at 00:00 GMT+5");
