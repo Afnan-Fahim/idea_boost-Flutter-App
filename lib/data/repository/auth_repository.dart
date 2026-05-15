@@ -18,9 +18,6 @@ class AuthRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final UserService _userService;
 
-  // Track if GoogleSignIn has been initialized
-  static bool _googleSignInInitialized = false;
-
   AuthRepository(this._userService);
 
   /// SharedPreferences keys — session mirrors Firebase after login; cleared on logout/delete.
@@ -267,7 +264,7 @@ class AuthRepository {
   /// This is called ONLY after email is verified
   Future<void> createVerifiedUser(User user) async {
     try {
-      debugPrint('📝 Creating verified user document for ${user.uid}...');
+        debugPrint('📝 Creating verified user document for ${user.uid}...');
       await _ensureUserDocument(user);
       await persistLocalSessionFlags();
       debugPrint('✅ Verified user document created successfully');
@@ -277,6 +274,7 @@ class AuthRepository {
     }
   }
 
+
   /// ---------------------------
   /// GOOGLE SIGN IN (NATIVE DIALOG)
   /// ---------------------------
@@ -285,62 +283,39 @@ class AuthRepository {
       debugPrint('📱 GoogleSignIn: Getting singleton instance...');
       final GoogleSignIn googleSignIn = GoogleSignIn.instance;
 
-      // Initialize only once
-      if (!_googleSignInInitialized) {
-        debugPrint('📱 GoogleSignIn: Initializing...');
-        try {
-          // On Android, serverClientId is required for google_sign_in 7.x
-          if (googleServerClientId.isNotEmpty) {
-            debugPrint('📱 GoogleSignIn: Using serverClientId for Android');
-            await googleSignIn.initialize(serverClientId: googleServerClientId);
-          } else {
-            debugPrint(
-              '⚠️ GoogleSignIn: No serverClientId provided (will only work on iOS)',
-            );
-            await googleSignIn.initialize();
-          }
-          _googleSignInInitialized = true;
-          debugPrint('✅ GoogleSignIn: Initialization successful');
-        } catch (e) {
-          debugPrint('❌ GoogleSignIn: Initialization failed: $e');
-          throw 'GoogleSignIn initialization failed: $e';
-        }
-      }
-
-      // Request authentication with timeout and error recovery
+      // Request authentication with error recovery
       // authenticate() shows the native account picker dialog
       debugPrint('📱 GoogleSignIn: Requesting account selection...');
 
-      late GoogleSignInAccount googleAccount;
+      // On Android/Web with google_sign_in v7, serverClientId is required to get tokens
+      debugPrint('📱 GoogleSignIn: Initializing with serverClientId...');
+      await googleSignIn.initialize(serverClientId: googleServerClientId);
+
+      // Potentially fix '[16] Account reauth failed' by clearing any existing session
+      debugPrint('📱 GoogleSignIn: Clearing stale session before picker...');
       try {
-        // authenticate() returns the account or throws if user cancels/times out
-        googleAccount = await googleSignIn.authenticate().timeout(
-          const Duration(seconds: 45),
-          onTimeout: () async {
-            debugPrint('⚠️ GoogleSignIn: Dialog timeout - attempting cleanup');
-            try {
-              await googleSignIn.signOut();
-            } catch (_) {
-              // Ignore cleanup errors
-            }
-            throw 'Google Sign-In took too long. Please check your internet connection.';
-          },
-        );
+        await googleSignIn.signOut();
+      } catch (_) {}
+
+      // authenticate() returns the account or throws if user cancels/times out
+      GoogleSignInAccount? googleAccount;
+      try {
+        debugPrint('📱 GoogleSignIn: Opening account picker...');
+        googleAccount = await googleSignIn.authenticate();
+
+        if (googleAccount == null) {
+          debugPrint('⚠️ GoogleSignIn: User dismissed the account picker');
+          return null; 
+        }
 
         debugPrint(
           '✅ GoogleSignIn: Account authenticated - ${googleAccount.email}',
         );
       } catch (e) {
-        debugPrint('❌ GoogleSignIn: Error: $e');
-        // Attempt cleanup on any error (except timeout, which already cleaned up)
-        if (!e.toString().contains('timeout') &&
-            !e.toString().contains('too long')) {
-          try {
-            await googleSignIn.signOut();
-          } catch (_) {
-            // Ignore cleanup failures
-          }
-        }
+        debugPrint('❌ GoogleSignIn: Error during authentication: $e');
+        try {
+          await googleSignIn.signOut();
+        } catch (_) {}
         rethrow;
       }
 
@@ -360,7 +335,7 @@ class AuthRepository {
 
       if (idToken == null || idToken.isEmpty) {
         debugPrint('❌ GoogleSignIn: Failed to get ID token');
-        throw 'Failed to get Google ID token';
+        throw Exception('Failed to get Google ID token');
       }
 
       // Create Firebase credential using ID token
@@ -405,7 +380,7 @@ class AuthRepository {
       throw Exception('errors.google_sign_in_failed'.tr());
     } catch (e) {
       debugPrint('❌ Unexpected error in signupWithGoogle: $e');
-      throw 'Google authentication error: ${e.toString()}';
+      throw Exception('Google authentication error: ${e.toString()}');
     }
   }
 
@@ -579,9 +554,6 @@ class AuthRepository {
 
       // Get singleton instance
       final GoogleSignIn googleSignIn = GoogleSignIn.instance;
-
-      // Initialize
-      await googleSignIn.initialize();
 
       // Show native Google account selector dialog
       final GoogleSignInAccount? googleAccount = await googleSignIn

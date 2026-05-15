@@ -99,6 +99,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
           SafeArea(
             child: Stack(
               children: [
+                // Content
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: _onboardingData.length,
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentPage = index;
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                    final data = _onboardingData[index];
+                    return _OnboardingContent(
+                      data: data,
+                      pulseAnimation: _pulseController,
+                      isActive: _currentPage == index,
+                    );
+                  },
+                ),
+
                 // Top Bar
                 _AnimatedFadeIn(
                   delay: 200,
@@ -129,25 +148,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
                       ],
                     ),
                   ),
-                ),
-
-                // Content
-                PageView.builder(
-                  controller: _pageController,
-                  itemCount: _onboardingData.length,
-                  onPageChanged: (index) {
-                    setState(() {
-                      _currentPage = index;
-                    });
-                  },
-                  itemBuilder: (context, index) {
-                    final data = _onboardingData[index];
-                    return _OnboardingContent(
-                      data: data,
-                      pulseAnimation: _pulseController,
-                      isActive: _currentPage == index,
-                    );
-                  },
                 ),
 
                 // Bottom Controls

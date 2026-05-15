@@ -102,7 +102,7 @@ class LoginViewModel extends ChangeNotifier {
 
     // Check internet connection
     final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity == ConnectivityResult.none) {
+    if (connectivity.contains(ConnectivityResult.none)) {
       errorMessage = 'errors.no_internet'.tr();
       notifyListeners();
       return false;
@@ -189,24 +189,30 @@ class LoginViewModel extends ChangeNotifier {
       if (user != null) {
         // initialize stream
         _initializeUserStream(user.uid);
+        isLoading = false;
+        notifyListeners();
+        return true;
       }
 
       isLoading = false;
       notifyListeners();
-      return true;
-    } catch (e) {
+      return false;
+    } catch (e, stack) {
       isLoading = false;
 
       debugPrint('❌ Google Sign-In Error: $e');
+      debugPrint('❌ Stack Trace: $stack');
       debugPrint('❌ Error Type: ${e.runtimeType}');
 
       // provide clearer messages for common account linking errors
-      final msg = e.toString();
+      final msg = e.toString().toLowerCase();
       if (msg.contains('credential-already-in-use')) {
         errorMessage = 'errors.email_already_linked'.tr();
       } else if (msg.contains('account-exists-with-different-credential')) {
         errorMessage = 'errors.account_different_credential'.tr();
       } else if (msg.contains('canceled') ||
+          msg.contains('cancelled') ||
+          msg.contains('user-dismissed') ||
           msg.contains('activity is cancelled by the user')) {
         // User dismissed the Google Auth dialog
         errorMessage = 'login.google_auth_dismissed'.tr();
@@ -340,7 +346,7 @@ class LoginViewModel extends ChangeNotifier {
   Future<bool> _hasInternetConnection() async {
     try {
       final connectivity = await Connectivity().checkConnectivity();
-      if (connectivity == ConnectivityResult.none) {
+      if (connectivity.contains(ConnectivityResult.none)) {
         return false;
       }
 

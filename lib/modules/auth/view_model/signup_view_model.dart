@@ -55,7 +55,7 @@ class SignupViewModel extends ChangeNotifier {
   Future<bool> _hasInternetConnection() async {
     try {
       final connectivity = await Connectivity().checkConnectivity();
-      if (connectivity == ConnectivityResult.none) {
+      if (connectivity.contains(ConnectivityResult.none)) {
         return false;
       }
 
@@ -163,7 +163,7 @@ class SignupViewModel extends ChangeNotifier {
 
     // Check internet
     final connectivity = await Connectivity().checkConnectivity();
-    if (connectivity == ConnectivityResult.none) {
+    if (connectivity.contains(ConnectivityResult.none)) {
       errorMessage = 'errors.no_internet'.tr();
       notifyListeners();
       return false;
@@ -247,21 +247,23 @@ class SignupViewModel extends ChangeNotifier {
       }
 
       isLoading = false;
-      errorMessage = 'errors.google_sign_in_failed'.tr();
       notifyListeners();
       return false;
-    } catch (e) {
+    } catch (e, stack) {
       isLoading = false;
+      debugPrint('❌ Google Sign-Up Error: $e');
+      debugPrint('❌ Stack Trace: $stack');
 
       // Handle account linking scenario
-      if (e.toString().contains('credential-already-in-use')) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('credential-already-in-use')) {
         errorMessage = 'errors.email_linked_use_different'.tr();
-      } else if (e.toString().contains(
-        'account-exists-with-different-credential',
-      )) {
+      } else if (msg.contains('account-exists-with-different-credential')) {
         errorMessage = 'errors.email_registered_sign_in'.tr();
-      } else if (e.toString().contains('canceled') ||
-          e.toString().contains('activity is cancelled by the user')) {
+      } else if (msg.contains('canceled') ||
+          msg.contains('cancelled') ||
+          msg.contains('user-dismissed') ||
+          msg.contains('activity is cancelled by the user')) {
         // User dismissed the Google Auth dialog
         errorMessage = 'signup.google_auth_dismissed'.tr();
       } else {
