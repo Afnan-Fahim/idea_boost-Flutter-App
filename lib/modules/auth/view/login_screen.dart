@@ -406,20 +406,7 @@ class _LoginScreenState extends State<LoginScreen>
                                             );
                                           }
                                         } else if (context.mounted) {
-                                          showSnackBarSafe(
-                                            context,
-                                            SnackBar(
-                                              content: AutoSizeText(
-                                                'Check your email to open the secure reset page',
-                                                maxLines: 2,
-                                                minFontSize: 10,
-                                                textAlign: TextAlign.center,
-                                              ),
-                                              backgroundColor: accentColor,
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                            ),
-                                          );
+                                          // No snackbar here, using inline error box instead
                                         }
                                       },
                                 style: ElevatedButton.styleFrom(
@@ -688,173 +675,197 @@ class _LoginScreenState extends State<LoginScreen>
         double bsv(double v) => v * bh / 844;
         double bfs(double v) => (v * bw / 390).clamp(v * 0.85, v * 1.4);
 
-        return StatefulBuilder(
-          builder: (ctx, setState) => Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom,
-            ),
-            child: Wrap(
-              children: [
-                Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: backgroundColor,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(bs(24)),
+        // 🌟 Clear error message when opening sheet
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          context.read<LoginViewModel>().errorMessage = null;
+        });
+
+        return Container(
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(bs(32))),
+          ),
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setState) => Consumer<LoginViewModel>(
+              builder: (context, vm, _) => SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: bs(24),
+                  vertical: bsv(20),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Drag handle
+                    Container(
+                      width: bs(40),
+                      height: bsv(4),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[600],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
-                  ),
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      bs(24),
-                      bsv(12),
-                      bs(24),
-                      bsv(32),
+                    SizedBox(height: bsv(24)),
+                    // Icon
+                    Container(
+                      padding: EdgeInsets.all(bs(16)),
+                      decoration: BoxDecoration(
+                        color: neonBlue.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.lock_reset_rounded,
+                        color: neonBlue,
+                        size: bs(32),
+                      ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Drag handle
-                        Container(
-                          width: bs(40),
-                          height: bsv(4),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[600],
-                            borderRadius: BorderRadius.circular(2),
+                    SizedBox(height: bsv(20)),
+                    AutoSizeText(
+                      'login.forgot_password'.tr(),
+                      style: TextStyle(
+                        color: textColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: bfs(20),
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.visible,
+                      minFontSize: 16,
+                    ),
+                    SizedBox(height: bsv(8)),
+                    AutoSizeText(
+                      'login.forgot_password_desc'.tr(),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: textColor.withOpacity(0.6),
+                        fontSize: bfs(14),
+                        height: 1.4,
+                      ),
+                      maxLines: 2,
+                      minFontSize: 11,
+                    ),
+                    SizedBox(height: bsv(24)),
+
+                    // 🌟 Inline Error Box
+                    if (vm.errorMessage != null) ...[
+                      Container(
+                        padding: EdgeInsets.all(bs(12)),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF6B6B).withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(bs(8)),
+                          border: Border.all(
+                            color: const Color(0xFFFF6B6B).withOpacity(0.5),
                           ),
                         ),
-                        SizedBox(height: bsv(24)),
-                        // Icon
-                        Container(
-                          padding: EdgeInsets.all(bs(16)),
-                          decoration: BoxDecoration(
-                            color: neonBlue.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.lock_reset_rounded,
-                            color: neonBlue,
-                            size: bs(32),
-                          ),
-                        ),
-                        SizedBox(height: bsv(20)),
-                        AutoSizeText(
-                          'login.forgot_password'.tr(),
-                          style: TextStyle(
-                            color: textColor,
-                            fontWeight: FontWeight.w700,
-                            fontSize: bfs(20),
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.visible,
-                          minFontSize: 16,
-                        ),
-                        SizedBox(height: bsv(8)),
-                        AutoSizeText(
-                          'login.forgot_password_desc'.tr(),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: textColor.withOpacity(0.6),
-                            fontSize: bfs(14),
-                            height: 1.4,
-                          ),
-                          maxLines: 2,
-                          minFontSize: 11,
-                        ),
-                        SizedBox(height: bsv(24)),
-                        TextField(
-                          controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          style: TextStyle(color: textColor, fontSize: bfs(15)),
-                          autofocus: true,
-                          decoration: InputDecoration(
-                            hintText: 'login.email_hint'.tr(),
-                            hintStyle: TextStyle(
-                              color: Colors.grey[500],
-                              fontSize: bfs(14),
-                            ),
-                            prefixIcon: Icon(
-                              Icons.mail_outline_rounded,
-                              color: neonBlue,
-                              size: bs(20),
-                            ),
-                            filled: true,
-                            fillColor: surfaceColor,
-                            contentPadding: EdgeInsets.symmetric(
-                              vertical: bsv(16),
-                              horizontal: bs(12),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(bs(12)),
-                              borderSide: BorderSide.none,
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(bs(12)),
-                              borderSide: BorderSide(color: neonBlue, width: 2),
-                            ),
+                        child: Center(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.error_outline,
+                                color: const Color(0xFFFF6B6B),
+                                size: bs(20),
+                              ),
+                              SizedBox(width: bs(8)),
+                              Flexible(
+                                child: AutoSizeText(
+                                  vm.errorMessage!,
+                                  style: const TextStyle(
+                                    color: Color(0xFFFF6B6B),
+                                    fontSize: 13,
+                                  ),
+                                  maxLines: 2,
+                                  minFontSize: 10,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: bsv(20)),
-                        SizedBox(
-                          width: double.infinity,
-                          height: bsv(52),
-                          child: ElevatedButton(
-                            onPressed: isLoading
-                                ? null
-                                : () async {
-                                    final email = emailController.text.trim();
-                                    if (email.isEmpty) return;
-                                    setState(() => isLoading = true);
-                                    try {
-                                      final vm = context.read<LoginViewModel>();
-                                      final success =
-                                          await vm.sendPasswordResetEmail(
-                                        email,
+                      ),
+                      SizedBox(height: bsv(18)),
+                    ],
+
+                    TextField(
+                      controller: emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      style: TextStyle(color: textColor, fontSize: bfs(15)),
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: 'login.email_hint'.tr(),
+                        hintStyle: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: bfs(14),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.mail_outline_rounded,
+                          color: neonBlue,
+                          size: bs(20),
+                        ),
+                        filled: true,
+                        fillColor: surfaceColor,
+                        contentPadding: EdgeInsets.symmetric(
+                          vertical: bsv(16),
+                          horizontal: bs(12),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(bs(12)),
+                          borderSide: BorderSide.none,
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(bs(12)),
+                          borderSide: BorderSide(color: neonBlue, width: 2),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: bsv(20)),
+                    SizedBox(
+                      width: double.infinity,
+                      height: bsv(52),
+                      child: ElevatedButton(
+                        onPressed: isLoading
+                            ? null
+                            : () async {
+                                final email = emailController.text.trim();
+                                if (email.isEmpty) return;
+                                setState(() => isLoading = true);
+                                try {
+                                  final vm = context.read<LoginViewModel>();
+                                  final success =
+                                      await vm.sendPasswordResetEmail(
+                                    email,
+                                  );
+
+                                  if (success) {
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    if (context.mounted) {
+                                      showSnackBarSafe(
+                                        context,
+                                        SnackBar(
+                                          content: AutoSizeText(
+                                            'Check your email to open the secure reset page',
+                                            maxLines: 2,
+                                            minFontSize: 10,
+                                            textAlign: TextAlign.center,
+                                          ),
+                                          backgroundColor: Colors.green,
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
                                       );
-                                      if (ctx.mounted) Navigator.pop(ctx);
-                                      if (context.mounted) {
-                                        if (success) {
-                                          showSnackBarSafe(
-                                            context,
-                                            SnackBar(
-                                              content: AutoSizeText(
-                                                'Check your email to open the secure reset page',
-                                                maxLines: 2,
-                                                minFontSize: 10,
-                                                textAlign: TextAlign.center,
-                                              ),
-                                              backgroundColor: Colors.green,
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                            ),
-                                          );
-                                        } else {
-                                          showSnackBarSafe(
-                                            context,
-                                            SnackBar(
-                                              content: AutoSizeText(
-                                                'login.reset_email_failed'.tr(),
-                                                maxLines: 2,
-                                                minFontSize: 10,
-                                                textAlign: TextAlign.center,
-                                              ),
-                                              backgroundColor: const Color(
-                                                0xFFFF6B6B,
-                                              ),
-                                              behavior:
-                                                  SnackBarBehavior.floating,
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    } catch (e) {
+                                    }
+                                  } else {
+                                    // 🌟 Only show snackbar if there is no specific error message
+                                    // (If there is one, like "unregistered", the inline box shows it)
+                                    if (vm.errorMessage == null) {
                                       if (ctx.mounted) Navigator.pop(ctx);
                                       if (context.mounted) {
                                         showSnackBarSafe(
                                           context,
                                           SnackBar(
                                             content: AutoSizeText(
-                                              'errors.something_went_wrong_try_again'
-                                                  .tr(),
+                                              'login.reset_email_failed'.tr(),
                                               maxLines: 2,
                                               minFontSize: 10,
                                               textAlign: TextAlign.center,
@@ -866,49 +877,67 @@ class _LoginScreenState extends State<LoginScreen>
                                           ),
                                         );
                                       }
-                                    } finally {
-                                      if (ctx.mounted) {
-                                        setState(() => isLoading = false);
-                                      }
                                     }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: neonBlue,
-                              disabledBackgroundColor: neonBlue.withOpacity(
-                                0.5,
-                              ),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(bs(12)),
-                              ),
-                            ),
-                            child: isLoading
-                                ? SizedBox(
-                                    height: bs(22),
-                                    width: bs(22),
-                                    child: CircularProgressIndicator(
-                                      color: backgroundColor,
-                                      strokeWidth: 2.5,
-                                    ),
-                                  )
-                                : AutoSizeText(
-                                    'login.send_reset_link'.tr(),
-                                    style: TextStyle(
-                                      fontSize: bfs(16),
-                                      fontWeight: FontWeight.w600,
-                                      color: backgroundColor,
-                                    ),
-                                    maxLines: 1,
-                                    minFontSize: 12,
-                                    textAlign: TextAlign.center,
-                                  ),
+                                  }
+                                } catch (e) {
+                                  if (ctx.mounted) Navigator.pop(ctx);
+                                  if (context.mounted) {
+                                    showSnackBarSafe(
+                                      context,
+                                      SnackBar(
+                                        content: AutoSizeText(
+                                          'errors.something_went_wrong_try_again'
+                                              .tr(),
+                                          maxLines: 2,
+                                          minFontSize: 10,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        backgroundColor: const Color(
+                                          0xFFFF6B6B,
+                                        ),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                } finally {
+                                  if (ctx.mounted) {
+                                    setState(() => isLoading = false);
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: neonBlue,
+                          disabledBackgroundColor: neonBlue.withOpacity(0.5),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(bs(12)),
                           ),
                         ),
-                      ],
+                        child: isLoading
+                            ? SizedBox(
+                                height: bs(22),
+                                width: bs(22),
+                                child: CircularProgressIndicator(
+                                  color: backgroundColor,
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : AutoSizeText(
+                                'login.send_reset_link'.tr(),
+                                style: TextStyle(
+                                  fontSize: bfs(16),
+                                  fontWeight: FontWeight.w600,
+                                  color: backgroundColor,
+                                ),
+                                maxLines: 1,
+                                minFontSize: 12,
+                                textAlign: TextAlign.center,
+                              ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         );

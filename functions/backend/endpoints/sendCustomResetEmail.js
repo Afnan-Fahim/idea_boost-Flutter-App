@@ -32,7 +32,8 @@ module.exports = onRequest({region: "us-central1"}, async (req, res) => {
     const mailOptions = {
       from: `"IdeaBoost Support" <${process.env.GMAIL_USER}>`,
       to: email,
-      subject: "⚡ Action Required: Reset Your Password",
+      subject: "Password Reset for IdeaBoost",
+      text: `Hello! Click this link to reset your password: ${resetLink}`,
       html: `
         <div style="background-color: #0F172A; padding: 50px 20px; font-family: 'Helvetica', sans-serif; text-align: center;">
           <div style="max-width: 600px; margin: 0 auto; background-color: #1E293B; border-radius: 20px; padding: 40px; border: 1px solid #334155;">

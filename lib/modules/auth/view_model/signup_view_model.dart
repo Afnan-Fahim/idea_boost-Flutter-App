@@ -3,6 +3,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../data/repository/auth_repository.dart';
 
@@ -331,6 +332,26 @@ class SignupViewModel extends ChangeNotifier {
     } catch (e) {
       errorMessage = 'errors.sign_out_failed'.tr();
       notifyListeners();
+    }
+  }
+
+  /// ---------------------------
+  /// SEND PROFESSIONAL VERIFICATION EMAIL
+  /// ---------------------------
+  Future<bool> sendCustomVerificationEmail(String email) async {
+    try {
+      final response = await http.post(
+        Uri.parse(
+          'https://sendcustomverificationemail-onbmw23m6a-uc.a.run.app',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('❌ Custom Verification Email Error: $e');
+      return false;
     }
   }
 }

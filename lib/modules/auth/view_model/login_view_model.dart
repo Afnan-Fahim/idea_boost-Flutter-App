@@ -128,7 +128,10 @@ class LoginViewModel extends ChangeNotifier {
       // Map Firebase error codes to user-friendly messages
       switch (e.code) {
         case 'user-not-found':
-          errorMessage = 'errors.account_not_found'.tr();
+          errorMessage = 'You are an unregistered user, please register first';
+          break;
+        case 'invalid-credential':
+          errorMessage = 'You are an unregistered user, please register first';
           break;
         case 'wrong-password':
           errorMessage = 'errors.invalid_password'.tr();
@@ -146,7 +149,7 @@ class LoginViewModel extends ChangeNotifier {
           errorMessage = 'errors.no_internet'.tr();
           break;
         default:
-          errorMessage = 'errors.sign_in_failed_credentials'.tr();
+          errorMessage = 'You are an unregistered user, please register first';
       }
       notifyListeners();
       return false;
@@ -289,6 +292,18 @@ class LoginViewModel extends ChangeNotifier {
   /// ---------------------------
   Future<bool> sendPasswordResetEmail(String email) async {
     try {
+      // 1. Check if user exists in Firestore
+      final registered = await _authRepository.isEmailRegistered(email);
+
+      if (!registered) {
+        errorMessage = 'You are an unregistered user, please register first';
+        notifyListeners();
+        return false;
+      }
+
+      errorMessage = null;
+      notifyListeners();
+
       final response = await http.post(
         Uri.parse(
           'https://sendcustomresetemail-onbmw23m6a-uc.a.run.app',
@@ -300,6 +315,14 @@ class LoginViewModel extends ChangeNotifier {
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('❌ Custom Reset Email Error: $e');
+      // If the error is about user not found, show the right message
+      if (e.toString().contains('user-not-found') || 
+          e.toString().contains('invalid-email')) {
+        errorMessage = 'You are an unregistered user, please register first';
+      } else {
+        errorMessage = 'errors.unexpected_error'.tr();
+      }
+      notifyListeners();
       return false;
     }
   }

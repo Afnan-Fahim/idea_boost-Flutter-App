@@ -913,7 +913,27 @@ class AuthRepository {
       debugPrint('❌❌❌ [CRITICAL ERROR] Account deletion FAILED ❌❌❌');
       debugPrint('   Error: $e');
       debugPrint('═══════════════════════════════════════════════════════════');
-      rethrow;
+      throw Exception('errors.something_went_wrong_try_again'.tr());
+    }
+  }
+
+  /// ---------------------------
+  /// CHECK EMAIL REGISTRATION
+  /// ---------------------------
+  /// Returns true if an account with this email exists in Firestore
+  Future<bool> isEmailRegistered(String email) async {
+    try {
+      final query = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email.trim())
+          .limit(1)
+          .get();
+      return query.docs.isNotEmpty;
+    } catch (e) {
+      debugPrint('❌ Error checking email registration: $e');
+      // If we get a permission error, we assume the user exists to be safe,
+      // or we can handle it specifically. For now, we return false to trigger the "unregistered" message.
+      return false;
     }
   }
 }

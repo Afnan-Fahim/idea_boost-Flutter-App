@@ -338,8 +338,9 @@ class _SignupScreenState extends State<SignupScreen>
 
                                             if (!isVerified) {
                                               try {
-                                                await user
-                                                    .sendEmailVerification();
+                                                await vm.sendCustomVerificationEmail(
+                                                  user.email ?? '',
+                                                );
                                               } catch (_) {}
                                               if (context.mounted) {
                                                 final sheetResult =

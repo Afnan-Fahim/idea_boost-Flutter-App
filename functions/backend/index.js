@@ -23,6 +23,7 @@ const generateAi = require("./endpoints/generateAi");
 const claimReward = require("./endpoints/claimReward");
 const testCheatProUpgrade = require("./endpoints/testCheatProUpgrade");
 const sendCustomResetEmail = require("./endpoints/sendCustomResetEmail");
+const sendCustomVerificationEmail = require("./endpoints/sendCustomVerificationEmail");
 
 // Import Firestore triggers
 const onUserCreate = require("./triggers/onUserCreate");
@@ -227,6 +228,14 @@ exports.testCheatProUpgrade = onRequest(
  */
 exports.sendCustomResetEmail = sendCustomResetEmail;
 
+/**
+ * POST /api/sendCustomVerificationEmail
+ * Send professional branded verification email
+ * Request: { email }
+ * Response: { success, message }
+ */
+exports.sendCustomVerificationEmail = sendCustomVerificationEmail;
+
 // ════════════════════════════════════════════════════════════════
 // HEALTH CHECK ENDPOINT (optional, for monitoring)
 // ════════════════════════════════════════════════════════════════
@@ -253,5 +262,6 @@ logger.info("  - POST /api/claimReward (Reward claiming)");
 logger.info("  - POST /api/testCheatProUpgrade (Test cheat: Enable PRO)");
 logger.info("  - GET /health (Health check)");
 logger.info("  - POST /api/sendCustomResetEmail (Professional Reset Email)");
+logger.info("  - POST /api/sendCustomVerificationEmail (Professional Verification Email)");
 logger.info("  - TRIGGER: onUserCreated (Auto-resolve regionTier)");
 logger.info("  - SCHEDULED: Daily reset at 00:00 GMT+5");
