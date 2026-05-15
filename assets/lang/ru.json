@@ -409,7 +409,9 @@
     },
     "signup": {
         "create_account": "Создать аккаунт",
-        "subtitle": "Присоединяйтесь и начните творческий путь",
+        "subtitle": "Присоединяйтесь к нам и начните свой творческий путь",
+        "full_name_label": "Полное имя",
+        "full_name_hint": "Введите ваше имя",
         "email_label": "Электронная почта",
         "email_hint": "your@email.com",
         "invalid_email": "Неверный email",

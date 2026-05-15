@@ -194,9 +194,27 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       SizedBox(height: sv(32)),
 
-                      // 2 — Email
+                      // 2 — Full Name
                       _anim(
                         2,
+                        _buildInputField(
+                          label: 'signup.full_name_label'.tr(),
+                          hint: 'signup.full_name_hint'.tr(),
+                          icon: Icons.person_outline_rounded,
+                          onChanged: (v) => vm.name = v,
+                          neonBlue: neonBlue,
+                          surfaceColor: surfaceColor,
+                          textColor: textColor,
+                          s: s,
+                          sv: sv,
+                          fs: fs,
+                        ),
+                      ),
+                      SizedBox(height: sv(18)),
+
+                      // 3 — Email
+                      _anim(
+                        3,
                         _buildInputField(
                           label: 'signup.email_label'.tr(),
                           hint: 'signup.email_hint'.tr(),
@@ -215,9 +233,9 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       SizedBox(height: sv(18)),
 
-                      // 3 — Password
+                      // 4 — Password
                       _anim(
-                        3,
+                        4,
                         _buildPasswordField(
                           label: 'signup.password_label'.tr(),
                           hint: 'signup.password_hint'.tr(),
@@ -234,9 +252,9 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       SizedBox(height: sv(18)),
 
-                      // 4 — Confirm Password
+                      // 5 — Confirm Password
                       _anim(
-                        4,
+                        5,
                         _buildPasswordField(
                           label: 'signup.confirm_password_label'.tr(),
                           hint: 'signup.confirm_password_hint'.tr(),
@@ -253,9 +271,9 @@ class _SignupScreenState extends State<SignupScreen>
                       ),
                       SizedBox(height: sv(18)),
 
-                      // 5 — Error + Create Account Button
+                      // 6 — Error + Create Account Button
                       _anim(
-                        5,
+                        6,
                         Column(
                           children: [
                             if (vm.errorMessage != null) ...[

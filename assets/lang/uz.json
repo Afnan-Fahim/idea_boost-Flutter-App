@@ -405,6 +405,8 @@
     "signup": {
         "create_account": "Hisob yaratish",
         "subtitle": "Bizga qo'shiling va ijodiy yo'lingizni boshlang",
+        "full_name_label": "To'liq ism",
+        "full_name_hint": "Ismingizni kiriting",
         "email_label": "Email manzil",
         "email_hint": "your@email.com",
         "invalid_email": "Noto'g'ri email",

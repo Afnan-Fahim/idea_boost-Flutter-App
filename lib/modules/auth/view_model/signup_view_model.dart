@@ -17,6 +17,7 @@ class SignupViewModel extends ChangeNotifier {
   User? _currentUser;
 
   // Form fields
+  String name = '';
   String email = '';
   String password = '';
   String confirmPassword = '';
@@ -136,6 +137,12 @@ class SignupViewModel extends ChangeNotifier {
   /// ---------------------------
   Future<bool> signup() async {
     // Validation
+    if (name.trim().isEmpty) {
+      errorMessage = 'Please enter your full name';
+      notifyListeners();
+      return false;
+    }
+
     if (!isEmailValid) {
       errorMessage = 'errors.invalid_email_format'.tr();
       notifyListeners();
@@ -167,7 +174,7 @@ class SignupViewModel extends ChangeNotifier {
       errorMessage = null;
       notifyListeners();
 
-      final user = await _authRepository.signup(email, password);
+      final user = await _authRepository.signup(email, password, displayName: name.trim());
 
       if (user != null) {
         debugPrint('✅ User signed up successfully: ${user.email}');

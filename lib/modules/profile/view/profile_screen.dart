@@ -805,6 +805,11 @@ class _ProfileScreenState extends State<ProfileScreen>
           value: user.name,
           isMobile: isMobile,
           onTap: () => _showNameDialog(context),
+          trailing: Icon(
+            Icons.edit_note_rounded,
+            color: const Color(0xFF00D4FF).withOpacity(0.5),
+            size: 18,
+          ),
         ),
         const SizedBox(height: 8),
         // _buildGlassField(
@@ -1368,6 +1373,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     required bool isMobile,
     bool isEditable = true,
     VoidCallback? onTap,
+    Widget? trailing,
   }) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -1421,18 +1427,19 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ),
             if (isEditable)
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.white38,
-                  size: 18,
-                ),
-              ),
+              trailing ??
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white38,
+                      size: 18,
+                    ),
+                  ),
           ],
         ),
       ),

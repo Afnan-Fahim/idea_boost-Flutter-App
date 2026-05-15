@@ -35,6 +35,7 @@ class UserService {
     String uid,
     String email, {
     String? deviceLanguage,
+    String? displayName,
   }) async {
     debugPrint('🚨🚨🚨 createNewUser CALLED for $uid');
     // Collect region data for tier resolution
@@ -78,7 +79,7 @@ class UserService {
     final defaultUser = UserModel(
       id: uid,
       email: email,
-      name: 'User',
+      name: displayName ?? 'User',
       plan: 'free',
       language: deviceLanguage ?? 'en',
       dailyLimit: 3,

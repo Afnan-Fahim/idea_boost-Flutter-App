@@ -66,7 +66,7 @@ class AuthRepository {
   ///
   /// - New users: Capture device language via LanguageService
   /// - Existing users: Update minimal fields
-  Future<void> _ensureUserDocument(User user, {String? deviceLanguage}) async {
+  Future<void> _ensureUserDocument(User user, {String? deviceLanguage, String? displayName}) async {
     try {
       final userDoc = await _firestore.collection('users').doc(user.uid).get();
 
@@ -81,6 +81,7 @@ class AuthRepository {
           user.uid,
           user.email ?? 'no-email',
           deviceLanguage: langCode,
+          displayName: displayName,
         );
         debugPrint('🌍 New user created with language: $langCode');
       } else {
@@ -89,9 +90,19 @@ class AuthRepository {
           '🚨 USER DOC ALREADY EXISTS for ${user.uid} - SKIPPING createNewUser',
         );
         // NOTE: Do NOT update photoUrl here - it should only be updated when user uploads a custom avatar
+        final existingData = userDoc.data() as Map<String, dynamic>?;
+        final String currentStoredName = existingData?['name'] as String? ?? 'User';
+
+        // 🛡️ SECURITY: Only update name if it's currently generic 'User' 
+        // and we have a real name from the auth provider (like Google)
+        String finalName = currentStoredName;
+        if (currentStoredName == 'User' && user.displayName != null && user.displayName!.isNotEmpty) {
+          finalName = user.displayName!;
+        }
+
         await _firestore.collection('users').doc(user.uid).update({
           'email': user.email,
-          'displayName': user.displayName,
+          'name': finalName,
         });
       }
     } catch (e) {
@@ -109,7 +120,7 @@ class AuthRepository {
   /// ---------------------------
   /// SIGN UP (EMAIL/PASSWORD)
   /// ---------------------------
-  Future<User?> signup(String email, String password) async {
+  Future<User?> signup(String email, String password, {String? displayName}) async {
     try {
       // Check if email already exists in Firestore (from Google/Apple signup)
       final existingUser = await _checkEmailExists(email);
@@ -129,7 +140,7 @@ class AuthRepository {
       if (user != null) {
         // ✅ Create Firestore document immediately with device language
         final deviceLanguage = LanguageService.getDeviceLanguageCode();
-        await _ensureUserDocument(user, deviceLanguage: deviceLanguage);
+        await _ensureUserDocument(user, deviceLanguage: deviceLanguage, displayName: displayName);
         debugPrint('✅ User account created: ${user.email}');
         await persistLocalSessionFlags();
 
