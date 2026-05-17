@@ -13,6 +13,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'verification_bottom_sheet.dart';
 import '../../home/view/home_screen.dart';
+import '../../../main.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -498,53 +499,13 @@ class _LoginScreenState extends State<LoginScreen>
                               label: 'Google',
                               isLoading: vm.isLoading,
                               onPressed: () async {
-                                // Show the dialog hint message
-                                if (context.mounted) {
-                                  _showGoogleAuthDialog(
-                                    context,
-                                    neonBlue,
-                                    backgroundColor,
-                                    textColor,
-                                    s,
-                                    fs,
-                                  );
-                                }
-
                                 final success = await vm.loginWithGoogle();
                                 if (success && context.mounted) {
-                                  final user =
-                                      FirebaseAuth.instance.currentUser;
-                                  if (user != null) {
-                                    try {
-                                      final userDoc = await FirebaseFirestore
-                                          .instance
-                                          .collection('users')
-                                          .doc(user.uid)
-                                          .get();
-                                      if (userDoc.exists && context.mounted) {
-                                        final data = userDoc.data();
-                                        final savedLanguage =
-                                            data?['language'] as String?;
-                                        if (savedLanguage != null &&
-                                            savedLanguage.isNotEmpty) {
-                                          await context.setLocale(
-                                            Locale(savedLanguage),
-                                          );
-                                        }
-                                      }
-                                    } catch (e) {
-                                      // Continue with default language
-                                    }
-                                  }
-                                  if (context.mounted) {
-                                    Navigator.pushAndRemoveUntil(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const HomeScreen(),
-                                      ),
-                                      (route) => false,
-                                    );
-                                  }
+                                  Navigator.pushNamedAndRemoveUntil(
+                                    context,
+                                    AppRoutes.home,
+                                    (route) => false,
+                                  );
                                 }
                               },
                               s: s,
@@ -1081,66 +1042,7 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  static void _showGoogleAuthDialog(
-    BuildContext context,
-    Color neonBlue,
-    Color backgroundColor,
-    Color textColor,
-    double Function(double) s,
-    double Function(double) fs,
-  ) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black45,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: Center(
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: s(24), vertical: s(20)),
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(s(12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: s(20),
-                    offset: Offset(0, s(8)),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AutoSizeText(
-                    'login.google_auth_dialog_hint'.tr(),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: fs(14),
-                      fontWeight: FontWeight.w500,
-                      height: 1.5,
-                    ),
-                    maxLines: 3,
-                    minFontSize: 11,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
 
-    // Auto-dismiss after 2 seconds
-    Future.delayed(const Duration(seconds: 2), () {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
-    });
-  }
 
   static Widget _buildSocialButton({
     required String icon,

@@ -13,8 +13,6 @@ import 'modules/home/view/home_screen.dart';
 import 'modules/paywall/view/paywall_screen.dart';
 import 'modules/auth/view/reset_password_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'config/google_sign_in_config.dart';
 import 'package:app_links/app_links.dart';
 import 'dart:async';
 import 'package:provider/provider.dart';
@@ -42,17 +40,7 @@ void main() async {
   // This MUST be synchronous before creating providers
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  // 4. GOOGLE SIGN-IN INIT: Pre-initialize Google Sign-In singleton
-  // Required for version 7.x+ to work correctly on Android/Web
-  try {
-    debugPrint('📱 Main: Pre-initializing Google Sign-In...');
-    await GoogleSignIn.instance.initialize(
-      serverClientId: googleServerClientId,
-    );
-    debugPrint('✅ Main: Google Sign-In pre-initialized');
-  } catch (e) {
-    debugPrint('⚠️ Main: Google Sign-In pre-initialization failed: $e');
-  }
+  // Google Sign-In initialization is handled in AuthRepository.
 
   // Lock app to portrait (vertical) mode only (FAST)
   await SystemChrome.setPreferredOrientations([

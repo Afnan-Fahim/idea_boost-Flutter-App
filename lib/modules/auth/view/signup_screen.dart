@@ -518,18 +518,6 @@ class _SignupScreenState extends State<SignupScreen>
                               label: 'Google',
                               isLoading: vm.isLoading,
                               onPressed: () async {
-                                // Show the dialog hint message
-                                if (context.mounted) {
-                                  _showGoogleAuthDialog(
-                                    context,
-                                    neonBlue,
-                                    backgroundColor,
-                                    textColor,
-                                    s,
-                                    fs,
-                                  );
-                                }
-
                                 final success = await vm.signupWithGoogle();
                                 if (success && context.mounted) {
                                   // 🌍 PHASE 1.1: Set device language for new user after Google signup
@@ -630,66 +618,7 @@ class _SignupScreenState extends State<SignupScreen>
     );
   }
 
-  static void _showGoogleAuthDialog(
-    BuildContext context,
-    Color neonBlue,
-    Color backgroundColor,
-    Color textColor,
-    double Function(double) s,
-    double Function(double) fs,
-  ) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black45,
-      builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          child: Center(
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: s(24), vertical: s(20)),
-              decoration: BoxDecoration(
-                color: backgroundColor,
-                borderRadius: BorderRadius.circular(s(12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
-                    blurRadius: s(20),
-                    offset: Offset(0, s(8)),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AutoSizeText(
-                    'signup.google_auth_dialog_hint'.tr(),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: fs(14),
-                      fontWeight: FontWeight.w500,
-                      height: 1.5,
-                    ),
-                    maxLines: 3,
-                    minFontSize: 11,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
 
-    // Auto-dismiss after 2 seconds
-    Future.delayed(const Duration(seconds: 2), () {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
-    });
-  }
 
   // ──────────── Helper Widgets ────────────
   static Widget _buildInputField({

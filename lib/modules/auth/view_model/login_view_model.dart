@@ -221,8 +221,8 @@ class LoginViewModel extends ChangeNotifier {
       } else if (msg.contains('permission') || msg.contains('denied')) {
         errorMessage = 'login.google_auth_failed'.tr();
       } else {
-        // Other Google auth errors
-        errorMessage = 'login.google_auth_failed'.tr();
+        // Show exact error message for debugging
+        errorMessage = 'Auth Error: $e';
       }
 
       debugPrint('🔴 Final Error Message: $errorMessage');

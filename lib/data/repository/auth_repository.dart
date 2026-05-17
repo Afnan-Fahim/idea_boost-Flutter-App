@@ -3,7 +3,6 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:ideaboost/config/google_sign_in_config.dart';
 import 'package:ideaboost/core/services/user_service.dart';
 import 'package:ideaboost/core/services/language_service.dart';
 import 'package:ideaboost/core/services/profile_image_service.dart';
@@ -12,6 +11,7 @@ import 'package:ideaboost/data/repository/history_repository.dart';
 import 'package:ideaboost/data/repository/favorites_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:ideaboost/config/google_sign_in_config.dart';
 
 class AuthRepository {
   final FirebaseAuth _firebaseAuth = FirebaseAuth.instance;
@@ -280,95 +280,74 @@ class AuthRepository {
   /// ---------------------------
   Future<User?> signupWithGoogle() async {
     try {
-      debugPrint('📱 GoogleSignIn: Getting singleton instance...');
-      final GoogleSignIn googleSignIn = GoogleSignIn.instance;
+      // Initialize a fresh instance with serverClientId to get idToken
+      final GoogleSignIn googleSignIn = GoogleSignIn(serverClientId: googleServerClientId);
 
-      // Request authentication with error recovery
-      // authenticate() shows the native account picker dialog
-      debugPrint('📱 GoogleSignIn: Requesting account selection...');
-
-      // On Android/Web with google_sign_in v7, serverClientId is required to get tokens
-      debugPrint('📱 GoogleSignIn: Initializing with serverClientId...');
-      await googleSignIn.initialize(serverClientId: googleServerClientId);
-
-      // Potentially fix '[16] Account reauth failed' by clearing any existing session
-      debugPrint('📱 GoogleSignIn: Clearing stale session before picker...');
-      try {
-        await googleSignIn.signOut();
-      } catch (_) {}
-
-      // authenticate() returns the account or throws if user cancels/times out
+      // Show the Google account picker / authenticate the user.
+      debugPrint('📱 GoogleSignIn: Opening account picker via signIn()...');
       GoogleSignInAccount? googleAccount;
       try {
-        debugPrint('📱 GoogleSignIn: Opening account picker...');
-        googleAccount = await googleSignIn.authenticate();
-
-        if (googleAccount == null) {
-          debugPrint('⚠️ GoogleSignIn: User dismissed the account picker');
-          return null; 
+        // Force the account picker to show up by signing out first
+        await googleSignIn.signOut();
+        googleAccount = await googleSignIn.signIn();
+      } on Exception catch (e) {
+        final msg = e.toString().toLowerCase();
+        // Real user cancellation — surface as null (no error message shown).
+        if (msg.contains('canceled') ||
+            msg.contains('cancelled') ||
+            msg.contains('sign_in_canceled')) {
+          debugPrint('⚠️ GoogleSignIn: User cancelled the account picker');
+          return null;
         }
-
-        debugPrint(
-          '✅ GoogleSignIn: Account authenticated - ${googleAccount.email}',
-        );
-      } catch (e) {
-        debugPrint('❌ GoogleSignIn: Error during authentication: $e');
-        try {
-          await googleSignIn.signOut();
-        } catch (_) {}
         rethrow;
       }
 
-      debugPrint(
-        '✅ GoogleSignIn: Authentication returned account ${googleAccount.email}',
-      );
-
-      // Get ID token from authenticated account
-      debugPrint('📱 GoogleSignIn: Getting authentication tokens...');
-      final GoogleSignInAuthentication googleAuth =
-          await googleAccount.authentication;
-
-      final String? idToken = googleAuth.idToken;
-      debugPrint(
-        '📱 GoogleSignIn: idToken=${idToken != null ? 'present' : 'NULL'}',
-      );
-
-      if (idToken == null || idToken.isEmpty) {
-        debugPrint('❌ GoogleSignIn: Failed to get ID token');
-        throw Exception('Failed to get Google ID token');
+      if (googleAccount == null) {
+        debugPrint('⚠️ GoogleSignIn: No account returned — user dismissed the picker');
+        return null;
       }
 
-      // Create Firebase credential using ID token
-      debugPrint('🔥 Firebase: Creating credential from Google ID token...');
+      debugPrint('✅ GoogleSignIn: Account selected — ${googleAccount.email}');
+
+      // Get authentication tokens (ID token required for Firebase)
+      debugPrint('📱 GoogleSignIn: Retrieving authentication tokens for ${googleAccount.email}...');
+      final GoogleSignInAuthentication googleAuth = await googleAccount.authentication;
+
+      final String? idToken = googleAuth.idToken;
+      debugPrint('📱 GoogleSignIn: idToken=${idToken != null ? 'present' : 'NULL'}');
+
+      if (idToken == null || idToken.isEmpty) {
+        debugPrint('❌ GoogleSignIn: ID token is null — this usually happens if the serverClientId is incorrect or not a Web client ID.');
+        throw Exception('Failed to get Google ID token. Please check your configuration.');
+      }
+
+      // Build Firebase credential and sign in
+      debugPrint('🔥 Firebase: Creating credential and signing in...');
       final OAuthCredential credential = GoogleAuthProvider.credential(
         idToken: idToken,
       );
 
-      // Sign in to Firebase with the credential
-      debugPrint('🔥 Firebase: Signing in with credential...');
-      final UserCredential userCredential = await _firebaseAuth
-          .signInWithCredential(credential);
+      final UserCredential userCredential =
+          await _firebaseAuth.signInWithCredential(credential);
 
       debugPrint('✅ Firebase: Sign-in successful');
 
       final user = userCredential.user;
 
       if (user != null) {
-        debugPrint('👤 Creating Firestore document for ${user.uid}...');
+        debugPrint('👤 Ensuring Firestore document for ${user.uid}...');
         await _ensureUserDocument(user);
         await persistLocalSessionFlags();
 
-        // 🎯 CRITICAL: Record session start time for stale detection
+        // 🎯 Record session start time for stale detection
         StaleDataDetector.recordSessionStart();
 
-        debugPrint('✅ User setup complete: ${user.email}');
+        debugPrint('✅ Google sign-in complete: ${user.email}');
       }
 
       return user;
     } on FirebaseAuthException catch (e) {
-      debugPrint(
-        '❌ FirebaseAuthException code=${e.code}, message=${e.message}',
-      );
+      debugPrint('❌ FirebaseAuthException code=${e.code}, message=${e.message}');
 
       if (e.code == 'operation-not-allowed') {
         throw 'Google sign-in is not enabled in Firebase Console.';
@@ -380,7 +359,7 @@ class AuthRepository {
       throw Exception('errors.google_sign_in_failed'.tr());
     } catch (e) {
       debugPrint('❌ Unexpected error in signupWithGoogle: $e');
-      throw Exception('Google authentication error: ${e.toString()}');
+      rethrow;
     }
   }
 
@@ -552,12 +531,16 @@ class AuthRepository {
 
       debugPrint('🔄 Starting Google re-authentication for ${user.email}...');
 
-      // Get singleton instance
-      final GoogleSignIn googleSignIn = GoogleSignIn.instance;
+      // Initialize a fresh instance with serverClientId to get idToken
+      final GoogleSignIn googleSignIn = GoogleSignIn(serverClientId: googleServerClientId);
 
       // Show native Google account selector dialog
-      final GoogleSignInAccount? googleAccount = await googleSignIn
-          .authenticate();
+      GoogleSignInAccount? googleAccount;
+      try {
+        googleAccount = await googleSignIn.signIn();
+      } catch (e) {
+        debugPrint('⚠️ GoogleSignIn re-auth error: $e');
+      }
 
       if (googleAccount == null) {
         debugPrint('⚠️  User cancelled Google re-authentication');
