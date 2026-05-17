@@ -336,7 +336,7 @@ class AuthRepository {
 
       if (user != null) {
         debugPrint('👤 Ensuring Firestore document for ${user.uid}...');
-        await _ensureUserDocument(user);
+        await _ensureUserDocument(user, displayName: user.displayName);
         await persistLocalSessionFlags();
 
         // 🎯 Record session start time for stale detection
@@ -389,7 +389,7 @@ class AuthRepository {
       final user = userCredential.user;
 
       if (user != null) {
-        await _ensureUserDocument(user);
+        await _ensureUserDocument(user, displayName: user.displayName);
         await persistLocalSessionFlags();
 
         // 🎯 CRITICAL: Record session start time for stale detection
