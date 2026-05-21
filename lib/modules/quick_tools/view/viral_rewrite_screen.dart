@@ -7,6 +7,7 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:ideaboost/core/constants/colors.dart';
 import 'package:ideaboost/core/services/admob_service.dart';
 import 'package:ideaboost/core/utils/helpers.dart';
+import 'package:ideaboost/core/utils/hashtag_parser.dart';
 import 'package:ideaboost/data/repository/favorites_repository.dart';
 import 'package:ideaboost/modules/quick_tools/view_model/viral_rewrite_view_model.dart';
 import 'package:provider/provider.dart';
@@ -680,7 +681,7 @@ class _ViralRewriteScreenState extends State<ViralRewriteScreen>
   List<InlineSpan> _parseFormattedText(String text, Color accentColor) {
     final spans = <InlineSpan>[];
     // Matches **bold text** or #hashtags
-    final regex = RegExp(r'\*\*(.*?)\*\*|(#[\w_]+)', unicode: true);
+    final regex = HashtagParser.inlineFormatPattern;
     int lastEnd = 0;
     for (final match in regex.allMatches(text)) {
       if (match.start > lastEnd) {
@@ -709,7 +710,7 @@ class _ViralRewriteScreenState extends State<ViralRewriteScreen>
                 border: Border.all(color: AppColors.accent.withOpacity(0.3)),
               ),
               child: Text(
-                match.group(2)!,
+                HashtagParser.cleanToken(match.group(2)!),
                 style: TextStyle(
                   color: AppColors.accent,
                   fontWeight: FontWeight.w700,
@@ -912,12 +913,13 @@ class _ViralRewriteScreenState extends State<ViralRewriteScreen>
                 } else {
                   final result = await vm.saveToFavorites();
                   if (mounted) {
-                    final message = result == SaveFavoriteResult.alreadyExists
-                        ? 'general.snack_already_saved'.tr()
-                        : 'general.snack_saved'.tr();
-                    final color = result == SaveFavoriteResult.alreadyExists
-                        ? AppColors.warning
-                        : AppColors.success;
+                    final saved = result == SaveFavoriteResult.saved ||
+                        result == SaveFavoriteResult.updated;
+                    final message = saved
+                        ? 'general.snack_saved'.tr()
+                        : 'general.snack_already_saved'.tr();
+                    final color =
+                        saved ? AppColors.success : AppColors.warning;
                     _showFeedback(context, message, color: color);
                   }
                 }

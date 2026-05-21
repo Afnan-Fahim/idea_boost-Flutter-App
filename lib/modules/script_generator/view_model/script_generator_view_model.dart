@@ -288,10 +288,6 @@ class ScriptGeneratorViewModel extends ChangeNotifier {
       return SaveFavoriteResult.saved; // Fallback, won't actually save
     }
 
-    // Optimistic update - change UI immediately
-    _isFavorited = true;
-    notifyListeners();
-
     final itemId = DateTime.now().millisecondsSinceEpoch.toString();
     final generatedAt = DateTime.now().toIso8601String();
     final title = (idea?.title != null && idea!.title.trim().isNotEmpty)
@@ -319,7 +315,7 @@ class ScriptGeneratorViewModel extends ChangeNotifier {
     ];
 
     try {
-      final result = await _favoritesRepository.addScriptToFavorites(
+      final outcome = await _favoritesRepository.addScriptToFavorites(
         itemId: itemId,
         title: title,
         content: content,
@@ -328,12 +324,13 @@ class ScriptGeneratorViewModel extends ChangeNotifier {
         input: inputForHash, // Use input for duplicate detection
       );
 
-      if (result == SaveFavoriteResult.saved) {
-        _lastSavedItemId = itemId;
+      if (outcome.isSuccess) {
+        _isFavorited = true;
+        _lastSavedItemId = outcome.itemId;
       }
       _errorMessage = null;
       notifyListeners();
-      return result;
+      return outcome.result;
     } catch (e) {
       // Revert optimistic update on failure
       _isFavorited = false;

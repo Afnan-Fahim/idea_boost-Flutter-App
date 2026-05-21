@@ -5,7 +5,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:convert';
 import '../../../data/repository/auth_repository.dart';
 
 class LoginViewModel extends ChangeNotifier {
@@ -128,10 +127,10 @@ class LoginViewModel extends ChangeNotifier {
       // Map Firebase error codes to user-friendly messages
       switch (e.code) {
         case 'user-not-found':
-          errorMessage = 'You are an unregistered user, please register first';
+          errorMessage = 'errors.account_not_found'.tr();
           break;
         case 'invalid-credential':
-          errorMessage = 'You are an unregistered user, please register first';
+          errorMessage = 'errors.sign_in_failed_credentials'.tr();
           break;
         case 'wrong-password':
           errorMessage = 'errors.invalid_password'.tr();
@@ -149,7 +148,7 @@ class LoginViewModel extends ChangeNotifier {
           errorMessage = 'errors.no_internet'.tr();
           break;
         default:
-          errorMessage = 'You are an unregistered user, please register first';
+          errorMessage = 'errors.sign_in_failed_credentials'.tr();
       }
       notifyListeners();
       return false;
@@ -222,7 +221,7 @@ class LoginViewModel extends ChangeNotifier {
         errorMessage = 'login.google_auth_failed'.tr();
       } else {
         // Show exact error message for debugging
-        errorMessage = 'Auth Error: $e';
+        errorMessage = 'errors.google_sign_in_failed'.tr();
       }
 
       debugPrint('🔴 Final Error Message: $errorMessage');
@@ -298,36 +297,23 @@ class LoginViewModel extends ChangeNotifier {
   /// ---------------------------
   Future<bool> sendPasswordResetEmail(String email) async {
     try {
-      // 1. Check if user exists in Firestore
-      final registered = await _authRepository.isEmailRegistered(email);
-
-      if (!registered) {
-        errorMessage = 'You are an unregistered user, please register first';
-        notifyListeners();
-        return false;
-      }
-
       errorMessage = null;
       notifyListeners();
 
-      final response = await http.post(
-        Uri.parse(
-          'https://sendcustomresetemail-onbmw23m6a-uc.a.run.app',
-        ),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email}),
-      );
-
-      return response.statusCode == 200;
+      await _authRepository.sendPasswordResetEmail(email);
+      return true;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('❌ Password reset auth error: ${e.code}');
+      if (e.code == 'user-not-found' || e.code == 'invalid-email') {
+        errorMessage = 'errors.account_not_found'.tr();
+      } else {
+        errorMessage = 'login.reset_email_failed'.tr();
+      }
+      notifyListeners();
+      return false;
     } catch (e) {
       debugPrint('❌ Custom Reset Email Error: $e');
-      // If the error is about user not found, show the right message
-      if (e.toString().contains('user-not-found') || 
-          e.toString().contains('invalid-email')) {
-        errorMessage = 'You are an unregistered user, please register first';
-      } else {
-        errorMessage = 'errors.unexpected_error'.tr();
-      }
+      errorMessage = 'login.reset_email_failed'.tr();
       notifyListeners();
       return false;
     }

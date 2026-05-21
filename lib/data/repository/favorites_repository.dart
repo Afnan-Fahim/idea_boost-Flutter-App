@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:ideaboost/data/repository/favorite_save_outcome.dart';
+
+export 'package:ideaboost/data/repository/favorite_save_outcome.dart';
 
 /// Result of adding to favorites
 enum SaveFavoriteResult {
@@ -15,6 +20,20 @@ enum SaveFavoriteResult {
   updated,
 }
 
+class FavoritesChangeEvent {
+  final String type;
+  final String itemId;
+  final String? inputHash;
+  final bool isDeleted;
+
+  FavoritesChangeEvent({
+    required this.type,
+    required this.itemId,
+    this.inputHash,
+    required this.isDeleted,
+  });
+}
+
 class FavoritesRepository {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -22,9 +41,22 @@ class FavoritesRepository {
   static final Map<String, List<Map<String, dynamic>>> _favoritesCache = {};
   static final Map<String, DateTime> _favoritesLastFetch = {};
 
+  static final StreamController<FavoritesChangeEvent> _changeController =
+      StreamController<FavoritesChangeEvent>.broadcast();
+
+  static Stream<FavoritesChangeEvent> get onChange => _changeController.stream;
+
+  static final Map<String, Map<String, dynamic>> _pendingDeletedItems = {};
+  static final Map<String, Timer> _pendingTimers = {};
+
   static void clearCache() {
     _favoritesCache.clear();
     _favoritesLastFetch.clear();
+    for (final timer in _pendingTimers.values) {
+      timer.cancel();
+    }
+    _pendingTimers.clear();
+    _pendingDeletedItems.clear();
   }
 
   String get _currentUserId => _auth.currentUser?.uid ?? '';
@@ -64,11 +96,35 @@ class FavoritesRepository {
     return digest.toString();
   }
 
-  /// Checks if a favorite with the given input hash already exists.
-  Future<String?> findExistingFavorite({
+    // Helper to retry Firestore operations with exponential backoff (max 3 attempts)
+    Future<T> _runWithRetry<T>(Future<T> Function() operation) async {
+      int attempts = 0;
+      while (true) {
+        try {
+          return await operation();
+        } catch (e) {
+          attempts++;
+          if (attempts >= 3) rethrow;
+          // exponential backoff
+          await Future.delayed(Duration(milliseconds: 200 * attempts * attempts));
+        }
+      }
+    }
+
+Future<String?> findExistingFavorite({
     required String type,
     required String inputHash,
   }) async {
+    if (_favoritesCache.containsKey(type)) {
+      final cachedList = _favoritesCache[type]!;
+      for (final item in cachedList) {
+        if (item['inputHash'] == inputHash) {
+          return item['id'] ?? item['itemId'];
+        }
+      }
+      return null;
+    }
+
     final snapshot = await _itemsRef(
       type,
     ).where('inputHash', isEqualTo: inputHash).limit(1).get();
@@ -82,7 +138,7 @@ class FavoritesRepository {
   // CORE - Now with duplicate detection based on INPUT/PROMPT
   /// [input] - The user's input/prompt text used for duplicate detection.
   /// Duplicates are detected by hashing the input text + type.
-  Future<SaveFavoriteResult> addToFavorites({
+  Future<FavoriteSaveOutcome> addToFavorites({
     required String type,
     required String itemId,
     required String title,
@@ -102,46 +158,196 @@ class FavoritesRepository {
       inputHash: inputHash,
     );
 
-    if (existingId != null) {
-      // Same prompt already saved - update timestamp to show recent access
-      await _itemsRef(
-        type,
-      ).doc(existingId).update({'savedAt': FieldValue.serverTimestamp()});
-      return SaveFavoriteResult.alreadyExists;
-    }
-
-    // New prompt - save with hash
     final dataToSave = {
-      'itemId': itemId,
       'userId': _currentUserId,
       'title': title,
       'content': content,
       'inputHash': inputHash,
       'groups': groups,
       'generatedAt': generatedAt,
-    };
-    
-    await _itemsRef(type).doc(itemId).set({
-      ...dataToSave,
       'savedAt': FieldValue.serverTimestamp(),
-    });
+    };
 
-    if (_favoritesCache.containsKey(type)) {
-      _favoritesCache[type]!.insert(0, {
+    if (existingId != null) {
+      // Same prompt — refresh stored output and timestamp (do not block the user)
+      final merged = {
         ...dataToSave,
-        'savedAt': Timestamp.now(),
-        'id': itemId,
-      });
+        'itemId': existingId,
+      };
+    // Use retry helper for Firestore update (duplicate case)
+    await _runWithRetry(() => _itemsRef(type).doc(existingId).set(merged, SetOptions(merge: true)));
+      _upsertCacheEntry(
+        type,
+        existingId,
+        {...merged, 'savedAt': Timestamp.now()},
+      );
+
+      _changeController.add(FavoritesChangeEvent(
+        type: type,
+        itemId: existingId,
+        inputHash: inputHash,
+        isDeleted: false,
+      ));
+
+      return FavoriteSaveOutcome(
+        result: SaveFavoriteResult.updated,
+        itemId: existingId,
+      );
     }
 
-    return SaveFavoriteResult.saved;
+    // New prompt - save with hash
+    final newData = {
+      ...dataToSave,
+      'itemId': itemId,
+    };
+
+    // Use retry helper for Firestore set operation
+    await _runWithRetry(() => _itemsRef(type).doc(itemId).set(newData));
+
+    _upsertCacheEntry(
+      type,
+      itemId,
+      {...newData, 'savedAt': Timestamp.now()},
+    );
+
+    _changeController.add(FavoritesChangeEvent(
+      type: type,
+      itemId: itemId,
+      inputHash: inputHash,
+      isDeleted: false,
+    ));
+
+    return FavoriteSaveOutcome(
+      result: SaveFavoriteResult.saved,
+      itemId: itemId,
+    );
+  }
+
+  void _upsertCacheEntry(
+    String type,
+    String itemId,
+    Map<String, dynamic> data,
+  ) {
+    if (!_favoritesCache.containsKey(type)) return;
+    final list = _favoritesCache[type]!;
+    list.removeWhere(
+      (item) => item['id'] == itemId || item['itemId'] == itemId,
+    );
+    list.insert(0, {...data, 'id': itemId});
   }
 
   Future<void> removeFromFavorites(String type, String itemId) async {
-    await _itemsRef(type).doc(itemId).delete();
+    String? inputHash;
+    if (_favoritesCache.containsKey(type)) {
+      final list = _favoritesCache[type]!;
+      final idx = list.indexWhere((item) => item['id'] == itemId || item['itemId'] == itemId);
+      if (idx != -1) {
+        inputHash = list[idx]['inputHash']?.toString();
+      }
+    }
+
+    // Use retry helper for Firestore delete operation
+    await _runWithRetry(() => _itemsRef(type).doc(itemId).delete());
     if (_favoritesCache.containsKey(type)) {
       _favoritesCache[type]!.removeWhere((item) => item['id'] == itemId || item['itemId'] == itemId);
     }
+
+    _changeController.add(FavoritesChangeEvent(
+      type: type,
+      itemId: itemId,
+      inputHash: inputHash,
+      isDeleted: true,
+    ));
+  }
+
+  /// Immediately removes item from cache and schedules database deletion.
+  /// If the timer expires, it permanently deletes from Firestore.
+  void removeFromFavoritesWithUndo({
+    required String type,
+    required String itemId,
+    required VoidCallback onUndoExpired,
+  }) {
+    Map<String, dynamic>? deletedItem;
+    if (_favoritesCache.containsKey(type)) {
+      final list = _favoritesCache[type]!;
+      final index = list.indexWhere((item) => item['id'] == itemId || item['itemId'] == itemId);
+      if (index != -1) {
+        deletedItem = list[index];
+        list.removeAt(index);
+      }
+    }
+
+    // Cancel any existing timer for this item
+    _pendingTimers[itemId]?.cancel();
+
+    if (deletedItem != null) {
+      _pendingDeletedItems[itemId] = {...deletedItem, 'type': type};
+    } else {
+      _pendingDeletedItems[itemId] = {'id': itemId, 'type': type};
+    }
+
+    _changeController.add(FavoritesChangeEvent(
+      type: type,
+      itemId: itemId,
+      inputHash: deletedItem?['inputHash']?.toString(),
+      isDeleted: true,
+    ));
+
+    _pendingTimers[itemId] = Timer(const Duration(seconds: 3), () async {
+      if (_pendingDeletedItems.containsKey(itemId)) {
+        _pendingDeletedItems.remove(itemId);
+        _pendingTimers.remove(itemId);
+
+        try {
+        // Use retry helper for Firestore delete operation
+    await _runWithRetry(() => _itemsRef(type).doc(itemId).delete());
+          onUndoExpired();
+        } catch (e) {
+          debugPrint('FavoritesRepository background delete error: $e');
+        }
+      }
+    });
+  }
+
+  /// Restores a pending deleted item within undo window.
+  Map<String, dynamic>? restoreFromFavorites(String itemId) {
+    if (!_pendingDeletedItems.containsKey(itemId)) return null;
+
+    final item = _pendingDeletedItems[itemId]!;
+    final type = item['type'] as String;
+
+    _pendingDeletedItems.remove(itemId);
+    _pendingTimers[itemId]?.cancel();
+    _pendingTimers.remove(itemId);
+
+    // Re-insert into cache
+    if (_favoritesCache.containsKey(type)) {
+      final list = _favoritesCache[type]!;
+      list.add(item);
+      list.sort((a, b) {
+        final aTime = a['savedAt'];
+        final bTime = b['savedAt'];
+
+        DateTime aDate = aTime.runtimeType.toString().contains('Timestamp')
+            ? aTime.toDate()
+            : DateTime.tryParse(aTime.toString()) ?? DateTime.now();
+
+        DateTime bDate = bTime.runtimeType.toString().contains('Timestamp')
+            ? bTime.toDate()
+            : DateTime.tryParse(bTime.toString()) ?? DateTime.now();
+
+        return bDate.compareTo(aDate);
+      });
+    }
+
+    _changeController.add(FavoritesChangeEvent(
+      type: type,
+      itemId: itemId,
+      inputHash: item['inputHash']?.toString(),
+      isDeleted: false,
+    ));
+
+    return item;
   }
 
   Stream<List<Map<String, dynamic>>> getFavoritesStream(String type) {
@@ -157,7 +363,7 @@ class FavoritesRepository {
     if (_favoritesCache.containsKey(type)) {
       return List<Map<String, dynamic>>.from(_favoritesCache[type]!);
     }
-    
+
     final s = await _itemsRef(type).orderBy('savedAt', descending: true).get();
     final results = s.docs.map((d) => {'id': d.id, ...d.data()}).toList();
     _favoritesCache[type] = List<Map<String, dynamic>>.from(results);
@@ -169,22 +375,35 @@ class FavoritesRepository {
     String type,
     String itemId,
   ) async {
+    if (_favoritesCache.containsKey(type)) {
+      try {
+        return _favoritesCache[type]!.firstWhere((item) => item['id'] == itemId || item['itemId'] == itemId);
+      } catch (_) {
+        return null;
+      }
+    }
     final d = await _itemsRef(type).doc(itemId).get();
     return d.exists ? {'id': d.id, ...d.data()!} : null;
   }
 
   Future<bool> isFavorited(String type, String itemId) async {
+    if (_favoritesCache.containsKey(type)) {
+      return _favoritesCache[type]!.any((item) => item['id'] == itemId || item['itemId'] == itemId);
+    }
     final d = await _itemsRef(type).doc(itemId).get();
     return d.exists;
   }
 
   Future<void> clearAllFavorites(String type) async {
-    final s = await _itemsRef(type).get();
-    final b = _firestore.batch();
-    for (final doc in s.docs) {
-      b.delete(doc.reference);
-    }
-    await b.commit();
+    // Use retry helper for batch delete in clearAllFavorites
+    await _runWithRetry(() async {
+      final s = await _itemsRef(type).get();
+      final b = _firestore.batch();
+      for (final doc in s.docs) {
+        b.delete(doc.reference);
+      }
+      await b.commit();
+    });
     _favoritesCache.remove(type);
     _favoritesLastFetch.remove(type);
   }
@@ -220,7 +439,7 @@ class FavoritesRepository {
   }
 
   // Wrappers - Now return SaveFavoriteResult to handle duplicates based on input
-  Future<SaveFavoriteResult> addCommentToFavorites({
+  Future<FavoriteSaveOutcome> addCommentToFavorites({
     required String itemId,
     required String comment,
     required String input,
@@ -237,7 +456,7 @@ class FavoritesRepository {
     );
   }
 
-  Future<SaveFavoriteResult> addScriptToFavorites({
+  Future<FavoriteSaveOutcome> addScriptToFavorites({
     required String itemId,
     required String title,
     required Map<String, dynamic> content,
@@ -256,7 +475,7 @@ class FavoritesRepository {
     );
   }
 
-  Future<SaveFavoriteResult> addAiRefinedScriptToFavorites({
+  Future<FavoriteSaveOutcome> addAiRefinedScriptToFavorites({
     required String itemId,
     required String title,
     required String originalScript,
@@ -281,7 +500,7 @@ class FavoritesRepository {
     );
   }
 
-  Future<SaveFavoriteResult> addIdeaDetailsToFavorites({
+  Future<FavoriteSaveOutcome> addIdeaDetailsToFavorites({
     required int id,
     required String title,
     required String description,
@@ -326,7 +545,7 @@ class FavoritesRepository {
   }
 
   // Quick tools wrappers
-  Future<SaveFavoriteResult> addHashtagToFavorites({
+  Future<FavoriteSaveOutcome> addHashtagToFavorites({
     required String itemId,
     required String title,
     required Map<String, dynamic> content,
@@ -345,7 +564,7 @@ class FavoritesRepository {
     );
   }
 
-  Future<SaveFavoriteResult> addShortIdeasToFavorites({
+  Future<FavoriteSaveOutcome> addShortIdeasToFavorites({
     required String itemId,
     required String title,
     required Map<String, dynamic> content,
@@ -364,7 +583,7 @@ class FavoritesRepository {
     );
   }
 
-  Future<SaveFavoriteResult> addViralRewriteToFavorites({
+  Future<FavoriteSaveOutcome> addViralRewriteToFavorites({
     required String itemId,
     required String title,
     required Map<String, dynamic> content,

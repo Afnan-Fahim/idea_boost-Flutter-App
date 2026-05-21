@@ -20,6 +20,8 @@ class HashtagGeneratorViewModel extends ChangeNotifier {
   // Store reward token for AI generation
   String? _rewardGrantToken;
 
+  final StreamSubscription<FavoritesChangeEvent>? _changeSubscription;
+
   HashtagGeneratorViewModel(
     this._userRepository, {
     String? initialRewardToken,
@@ -28,6 +30,8 @@ class HashtagGeneratorViewModel extends ChangeNotifier {
       _rewardGrantToken = initialRewardToken;
       print('🎟️ HashtagGenerator initialized with reward token');
     }
+    // Subscribe to Favorites changes
+    _changeSubscription = FavoritesRepository.onChange.listen(_handleFavoritesChange);
   }
 
   bool _isLoading = false;
@@ -293,17 +297,13 @@ class HashtagGeneratorViewModel extends ChangeNotifier {
       return SaveFavoriteResult.saved; // Fallback, won't save
     }
 
-    // Optimistic update - change UI immediately
-    _isFavorited = true;
-    notifyListeners();
-
     try {
       final itemId = DateTime.now().millisecondsSinceEpoch.toString();
       final title = _input.length > 50
           ? '${_input.substring(0, 50)}...'
           : _input;
 
-      final result = await _favoritesRepository.addHashtagToFavorites(
+      final outcome = await _favoritesRepository.addHashtagToFavorites(
         itemId: itemId,
         title: title,
         content: {'prompt': _input, 'hashtags': _output!},
@@ -319,13 +319,13 @@ class HashtagGeneratorViewModel extends ChangeNotifier {
         generatedAt: DateTime.now().toIso8601String(),
       );
 
-      if (result == SaveFavoriteResult.saved) {
-        _lastSavedItemId = itemId;
+      if (outcome.isSuccess) {
+        _isFavorited = true;
+        _lastSavedItemId = outcome.itemId;
       }
       notifyListeners();
-      return result;
+      return outcome.result;
     } catch (e) {
-      // Revert optimistic update on failure
       _isFavorited = false;
       _errorMessage = 'errors.failed_save_favorites'.tr();
       notifyListeners();

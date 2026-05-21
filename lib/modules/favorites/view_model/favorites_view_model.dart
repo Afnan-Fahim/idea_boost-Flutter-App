@@ -15,9 +15,60 @@ class FavoritesViewModel extends ChangeNotifier {
   String error = '';
   List<Map<String, dynamic>> favorites = [];
 
-  // Undo system: store deleted items temporarily
-  final Map<String, dynamic> _deletedItems = {};
-  final Map<String, Timer> _deletionTimers = {};
+  StreamSubscription<FavoritesChangeEvent>? _changeSubscription;
+
+  FavoritesViewModel(this._repository) {
+    _changeSubscription = FavoritesRepository.onChange.listen(_handleFavoritesChange);
+  }
+
+  void _handleFavoritesChange(FavoritesChangeEvent event) {
+    if (event.isDeleted) {
+      final index = favorites.indexWhere(
+        (item) => item['id'] == event.itemId || item['itemId'] == event.itemId,
+      );
+      if (index != -1) {
+        favorites.removeAt(index);
+        _invalidateFilterCache();
+        notifyListeners();
+      }
+    } else {
+      final exists = favorites.any(
+        (item) => item['id'] == event.itemId || item['itemId'] == event.itemId,
+      );
+      if (!exists) {
+        _repository.getFavoriteItem(event.type, event.itemId).then((item) {
+          if (item != null) {
+            final stillExists = favorites.any(
+              (i) => i['id'] == event.itemId || i['itemId'] == event.itemId,
+            );
+            if (!stillExists) {
+              favorites.add({...item, 'type': event.type});
+              favorites.sort((a, b) {
+                final aTime = a['savedAt'];
+                final bTime = b['savedAt'];
+                DateTime aDate = aTime.runtimeType.toString().contains('Timestamp')
+                    ? aTime.toDate()
+                    : DateTime.tryParse(aTime.toString()) ?? DateTime.now();
+                DateTime bDate = bTime.runtimeType.toString().contains('Timestamp')
+                    ? bTime.toDate()
+                    : DateTime.tryParse(bTime.toString()) ?? DateTime.now();
+                return bDate.compareTo(aDate);
+              });
+              _invalidateFilterCache();
+              notifyListeners();
+            }
+          }
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _changeSubscription?.cancel();
+    _filterCacheInvalidationTimer?.cancel();
+    super.dispose();
+  }
 
   // OPTIMIZED CACHING
   Map<String, Set<String>>? _cachedAvailableFilters;
@@ -242,8 +293,8 @@ class FavoritesViewModel extends ChangeNotifier {
   void removeFromFavoritesWithUndo(
     String type,
     String itemId,
-    Function onUndoExpired,
-  ) async {
+    VoidCallback onUndoExpired,
+  ) {
     // Find item first
     final itemIndex = favorites.indexWhere(
       (item) => item['id'] == itemId || item['itemId'] == itemId,
@@ -251,46 +302,26 @@ class FavoritesViewModel extends ChangeNotifier {
 
     if (itemIndex == -1) return;
 
-    final deletedItem = favorites[itemIndex];
-
-    // Cancel any existing timer for this item
-    _deletionTimers[itemId]?.cancel();
-
-    // Store for potential undo
-    _deletedItems[itemId] = deletedItem;
-
     // Remove from UI immediately (with animation)
     favorites.removeAt(itemIndex);
     _invalidateFilterCache();
     notifyListeners();
 
-    // 3-second undo window - then permanently delete
-    _deletionTimers[itemId] = Timer(const Duration(seconds: 3), () async {
-      if (_deletedItems.containsKey(itemId)) {
-        _deletedItems.remove(itemId);
-        _deletionTimers.remove(itemId);
-
-        // Permanently delete from backend in background
-        try {
-          await _repository.removeFromFavorites(type, itemId);
-          onUndoExpired();
-        } catch (e) {
-          debugPrint('FavoritesViewModel background delete error: $e');
-        }
-      }
-    });
+    // Delegate to repository
+    _repository.removeFromFavoritesWithUndo(
+      type: type,
+      itemId: itemId,
+      onUndoExpired: onUndoExpired,
+    );
   }
 
   /// Restore a deleted item within undo window
   bool restoreFromFavorites(String itemId) {
-    if (!_deletedItems.containsKey(itemId)) return false;
+    final restoredItem = _repository.restoreFromFavorites(itemId);
+    if (restoredItem == null) return false;
 
-    final item = _deletedItems[itemId];
-    favorites.add(item);
-
-    _deletedItems.remove(itemId);
-    _deletionTimers[itemId]?.cancel();
-    _deletionTimers.remove(itemId);
+    // Add back to VM list
+    favorites.add(restoredItem);
 
     // Re-sort
     favorites.sort((a, b) {

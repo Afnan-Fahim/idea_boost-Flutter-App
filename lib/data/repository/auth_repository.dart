@@ -9,6 +9,8 @@ import 'package:ideaboost/core/services/profile_image_service.dart';
 import 'package:ideaboost/core/services/stale_data_detector.dart';
 import 'package:ideaboost/data/repository/history_repository.dart';
 import 'package:ideaboost/data/repository/favorites_repository.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:ideaboost/config/google_sign_in_config.dart';
@@ -807,13 +809,13 @@ class AuthRepository {
       print('   ✅ Profile image cache cleared');
       debugPrint('   ✅ Profile image cache cleared');
 
-      // 3️⃣ DELETE FIREBASE AUTH ACCOUNT
+      // 3️⃣ DELETE FIREBASE AUTH ACCOUNT (with retries — Firestore already gone)
       print('');
       print('🔄 [STEP 3] Deleting Firebase Auth account...');
       debugPrint('');
       debugPrint('🔄 [STEP 3] Deleting Firebase Auth account...');
 
-      await user.delete();
+      await _deleteAuthAccountWithRetry(user);
       print('   ✅ Firebase Auth account deleted');
       debugPrint('   ✅ Firebase Auth account deleted');
 
@@ -848,6 +850,7 @@ class AuthRepository {
     } on FirebaseAuthException catch (e) {
       // 🎯 CRITICAL: Reset session tracking even on error
       StaleDataDetector.resetSession();
+      await _signOutAfterFailedDeletion();
 
       print('');
       print('❌ [ERROR] Firebase exception during deletion: ${e.code}');
@@ -858,18 +861,16 @@ class AuthRepository {
 
       // Handle specific Firebase errors
       if (e.code == 'requires-recent-login') {
-        throw Exception(
-          'Session expired. Please re-authenticate and try again. '
-          'Error: ${e.message}',
-        );
+        throw Exception('profile.delete_reauth_required'.tr());
       } else if (e.code == 'operation-not-allowed') {
-        throw Exception('Account deletion is not allowed at this time.');
+        throw Exception('errors.account_deletion_not_allowed'.tr());
       }
 
-      throw Exception('errors.something_went_wrong_try_again'.tr());
+      throw Exception('profile.delete_auth_failed'.tr());
     } catch (e) {
       // 🎯 CRITICAL: Reset session tracking even on error
       StaleDataDetector.resetSession();
+      await _signOutAfterFailedDeletion();
 
       print('');
       print('❌❌❌ [CRITICAL ERROR] Account deletion FAILED ❌❌❌');
@@ -879,8 +880,76 @@ class AuthRepository {
       debugPrint('❌❌❌ [CRITICAL ERROR] Account deletion FAILED ❌❌❌');
       debugPrint('   Error: $e');
       debugPrint('═══════════════════════════════════════════════════════════');
-      throw Exception('errors.something_went_wrong_try_again'.tr());
+      throw Exception('profile.delete_auth_failed'.tr());
     }
+  }
+
+  Future<void> _deleteAuthAccountWithRetry(User user) async {
+    FirebaseAuthException? lastAuthError;
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        await user.reload();
+        final freshUser = _firebaseAuth.currentUser;
+        if (freshUser == null) {
+          throw FirebaseAuthException(code: 'user-not-found');
+        }
+        await freshUser.delete();
+        return;
+      } on FirebaseAuthException catch (e) {
+        lastAuthError = e;
+        if (e.code == 'requires-recent-login') {
+          rethrow;
+        }
+        if (attempt < 2) {
+          await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+        }
+      }
+    }
+
+    throw lastAuthError ??
+        FirebaseAuthException(
+          code: 'delete-failed',
+          message: 'Could not delete Firebase Auth user',
+        );
+  }
+
+  Future<void> _signOutAfterFailedDeletion() async {
+    try {
+      HistoryRepository.clearCache();
+      FavoritesRepository.clearCache();
+      await _firebaseAuth.signOut();
+      await clearAllSharedPreferences();
+    } catch (_) {}
+  }
+
+  /// Sends branded password-reset email via Cloud Function.
+  Future<void> sendPasswordResetEmail(String email) async {
+    final trimmed = email.trim();
+    if (trimmed.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'invalid-email',
+        message: 'Invalid email',
+      );
+    }
+
+    final registered = await isEmailRegistered(trimmed);
+    if (!registered) {
+      throw FirebaseAuthException(
+        code: 'user-not-found',
+        message: 'No account for this email',
+      );
+    }
+
+    final response = await http.post(
+      Uri.parse('https://sendcustomresetemail-onbmw23m6a-uc.a.run.app'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': trimmed}),
+    );
+
+    if (response.statusCode == 200) return;
+
+    throw Exception('login.reset_email_failed'.tr());
   }
 
   /// ---------------------------
@@ -897,8 +966,6 @@ class AuthRepository {
       return query.docs.isNotEmpty;
     } catch (e) {
       debugPrint('❌ Error checking email registration: $e');
-      // If we get a permission error, we assume the user exists to be safe,
-      // or we can handle it specifically. For now, we return false to trigger the "unregistered" message.
       return false;
     }
   }

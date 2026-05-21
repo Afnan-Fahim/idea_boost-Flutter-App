@@ -34,6 +34,10 @@ const db = getFirestore();
 
 setGlobalOptions({maxInstances: 1}); // Resource optimization
 
+// Skip heavy async startup during Firebase CLI deploy discovery (avoids timeout).
+const isRuntime =
+  !!process.env.K_SERVICE || process.env.FUNCTIONS_EMULATOR === "true";
+
 // ════════════════════════════════════════════════════════════════
 // ANALYTICS INITIALIZATION
 // ════════════════════════════════════════════════════════════════
@@ -41,29 +45,31 @@ setGlobalOptions({maxInstances: 1}); // Resource optimization
 logger.info("🚀 Initializing Firebase Analytics...");
 analyticsModule.initAnalytics(require("firebase-admin/app").getApps()[0]);
 
-// ════════════════════════════════════════════════════════════════
-// REMOTE CONFIG INITIALIZATION (M.3: Tier Disable)
-// ════════════════════════════════════════════════════════════════
+if (isRuntime) {
+  // ════════════════════════════════════════════════════════════════
+  // REMOTE CONFIG INITIALIZATION (M.3: Tier Disable)
+  // ════════════════════════════════════════════════════════════════
 
-logger.info("🚀 Initializing Remote Config...");
-remoteConfigHelper.initRemoteConfig().then((success) => {
-  if (success) {
-    logger.info("✅ Remote Config initialized for tier disable failsafe");
-  }
-}).catch((err) => {
-  logger.warn(`⚠️ Remote Config init failed: ${err.message}`);
-});
+  logger.info("🚀 Initializing Remote Config...");
+  remoteConfigHelper.initRemoteConfig().then((success) => {
+    if (success) {
+      logger.info("✅ Remote Config initialized for tier disable failsafe");
+    }
+  }).catch((err) => {
+    logger.warn(`⚠️ Remote Config init failed: ${err.message}`);
+  });
 
-// ════════════════════════════════════════════════════════════════
-// FAILSAFE STATE RESTORATION (M.3: Persist Failsafe)
-// ════════════════════════════════════════════════════════════════
+  // ════════════════════════════════════════════════════════════════
+  // FAILSAFE STATE RESTORATION (M.3: Persist Failsafe)
+  // ════════════════════════════════════════════════════════════════
 
-logger.info("🚀 Loading failsafe state from Firestore...");
-failsafe.loadFailsafeStateOnStartup().then(() => {
-  logger.info("✅ Failsafe state loaded");
-}).catch((err) => {
-  logger.warn(`⚠️ Failsafe state load failed: ${err.message}`);
-});
+  logger.info("🚀 Loading failsafe state from Firestore...");
+  failsafe.loadFailsafeStateOnStartup().then(() => {
+    logger.info("✅ Failsafe state loaded");
+  }).catch((err) => {
+    logger.warn(`⚠️ Failsafe state load failed: ${err.message}`);
+  });
+}
 
 // ════════════════════════════════════════════════════════════════
 // SCHEDULED FUNCTION: Daily Reset at 12:00 AM GMT+5

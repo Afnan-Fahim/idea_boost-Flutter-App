@@ -7,6 +7,7 @@ import 'package:auto_size_text/auto_size_text.dart';
 import 'package:ideaboost/core/constants/colors.dart';
 import 'package:ideaboost/core/services/admob_service.dart';
 import 'package:ideaboost/core/utils/helpers.dart';
+import 'package:ideaboost/core/utils/hashtag_parser.dart';
 import 'package:ideaboost/data/repository/favorites_repository.dart';
 import 'package:ideaboost/modules/quick_tools/view_model/hashtag_generator_view_model.dart';
 import 'package:provider/provider.dart';
@@ -476,7 +477,7 @@ class _HashtagGeneratorScreenState extends State<HashtagGeneratorScreen>
     final spans = <InlineSpan>[];
     // Matches **bold text** or #hashtags (including non-Latin characters)
     // Updated regex: #[^\s]+ matches # followed by any non-whitespace characters
-    final regex = RegExp(r'\*\*(.*?)\*\*|(#[^\s]+)', unicode: true);
+    final regex = HashtagParser.inlineFormatPattern;
     int lastEnd = 0;
     for (final match in regex.allMatches(text)) {
       if (match.start > lastEnd) {
@@ -493,9 +494,7 @@ class _HashtagGeneratorScreenState extends State<HashtagGeneratorScreen>
         );
       } else if (match.group(2) != null) {
         // Hashtag match -> Render as a beautiful pill
-        var hashtag = match.group(2)!;
-        // Clean trailing punctuation except # at start
-        hashtag = hashtag.replaceAll(RegExp(r'[^\w#]$', unicode: true), '');
+        final hashtag = HashtagParser.cleanToken(match.group(2)!);
         spans.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
@@ -716,12 +715,13 @@ class _HashtagGeneratorScreenState extends State<HashtagGeneratorScreen>
                 } else {
                   final result = await vm.saveToFavorites();
                   if (mounted) {
-                    final message = result == SaveFavoriteResult.alreadyExists
-                        ? 'general.snack_already_saved'.tr()
-                        : 'general.snack_saved'.tr();
-                    final color = result == SaveFavoriteResult.alreadyExists
-                        ? AppColors.warning
-                        : AppColors.success;
+                    final saved = result == SaveFavoriteResult.saved ||
+                        result == SaveFavoriteResult.updated;
+                    final message = saved
+                        ? 'general.snack_saved'.tr()
+                        : 'general.snack_already_saved'.tr();
+                    final color =
+                        saved ? AppColors.success : AppColors.warning;
                     _showFeedback(context, message, color: color);
                   }
                 }

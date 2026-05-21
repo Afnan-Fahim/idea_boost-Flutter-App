@@ -190,7 +190,9 @@ class _IdeaDetailsScreenState extends State<IdeaDetailsScreen> {
           result = await _viewModel.addToFavorites(currentIdea);
         }
         // Only show message for successful adds, not for already exists
-        if (result == SaveFavoriteResult.saved && context.mounted) {
+        if ((result == SaveFavoriteResult.saved ||
+                result == SaveFavoriteResult.updated) &&
+            context.mounted) {
           _showSnackBar('idea_details.added_favorite'.tr(), Colors.red);
         }
       }

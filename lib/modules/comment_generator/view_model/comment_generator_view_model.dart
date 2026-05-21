@@ -584,10 +584,6 @@ class CommentGeneratorViewModel extends ChangeNotifier {
       return SaveFavoriteResult.saved; // Fallback, won't actually save
     }
 
-    // Optimistic update - change UI immediately
-    _isFavorited = true;
-    notifyListeners();
-
     try {
       final generatedAt = DateTime.now().toIso8601String();
 
@@ -611,7 +607,7 @@ class CommentGeneratorViewModel extends ChangeNotifier {
 
       // Save to Firestore - duplicate detection based on input + tones
       // This allows saving same input with different tones as separate favorites
-      final result = await _favoritesRepository.addToFavorites(
+      final outcome = await _favoritesRepository.addToFavorites(
         type: 'comments',
         itemId: itemId,
         title: _input.length > 50 ? '${_input.substring(0, 50)}...' : _input,
@@ -624,13 +620,13 @@ class CommentGeneratorViewModel extends ChangeNotifier {
             .toList(), // Include tones in duplicate detection
       );
 
-      // Track saved id
-      if (result == SaveFavoriteResult.saved) {
-        _lastSavedItemId = itemId;
+      if (outcome.isSuccess) {
+        _isFavorited = true;
+        _lastSavedItemId = outcome.itemId;
       }
       _errorMessage = null;
       notifyListeners();
-      return result;
+      return outcome.result;
     } catch (e) {
       // Revert optimistic update on failure
       _isFavorited = false;

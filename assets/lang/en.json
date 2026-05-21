@@ -151,7 +151,8 @@
         "delete_took_too_long": "Account deletion took too long. Please try again later.",
         "delete_stale_auth_title": "Confirm Your Identity",
         "delete_stale_auth_message": "For security, please sign in again to confirm account deletion",
-        "delete_stale_auth_button": "Sign In Again"
+        "delete_stale_auth_button": "Sign In Again",
+        "delete_auth_failed": "Your data was removed but we could not finish deleting your sign-in. Please sign out, try again, or contact support if login still works."
     },
     "paywall": {
         "title": "Unlock IdeaBoost Premium",
@@ -694,7 +695,8 @@
         "invalid_password": "Invalid password. Please try again.",
         "user_disabled": "This account has been disabled. Please contact support.",
         "too_many_login_attempts": "Too many login attempts. Please try again later.",
-        "weak_password": "Password is too weak. Use at least 6 characters with a mix of letters and numbers."
+        "weak_password": "Password is too weak. Use at least 6 characters with a mix of letters and numbers.",
+        "account_deletion_not_allowed": "Account deletion is not allowed at this time. Please contact support."
     },
     "comment_ext": {
         "enter_text_prompt": "Please enter text or a link to generate comments.",

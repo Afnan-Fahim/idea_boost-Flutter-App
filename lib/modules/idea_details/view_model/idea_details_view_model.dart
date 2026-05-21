@@ -61,10 +61,6 @@ class IdeaDetailsViewModel extends ChangeNotifier {
   }
 
   Future<SaveFavoriteResult> addToFavorites(IdeaModel ideaModel) async {
-    // Optimistic update - change UI immediately
-    _isFavorited = true;
-    notifyListeners();
-
     try {
       // Determine type based on dataset
       String favoriteType = 'idea_details';
@@ -74,7 +70,7 @@ class IdeaDetailsViewModel extends ChangeNotifier {
         favoriteType = 'seasonal_ideas';
       }
 
-      final result = await _favoritesRepository.addIdeaDetailsToFavorites(
+      final outcome = await _favoritesRepository.addIdeaDetailsToFavorites(
         id: ideaModel.id,
         title: ideaModel.title,
         description: ideaModel.description,
@@ -89,8 +85,11 @@ class IdeaDetailsViewModel extends ChangeNotifier {
         dataset: ideaModel.dataset,
         favoriteType: favoriteType,
       );
+      if (outcome.isSuccess) {
+        _isFavorited = true;
+      }
       notifyListeners();
-      return result;
+      return outcome.result;
     } catch (e) {
       // Revert optimistic update on failure
       _isFavorited = false;
@@ -104,10 +103,6 @@ class IdeaDetailsViewModel extends ChangeNotifier {
     required IdeaModel originalIdea,
     required IdeaModel refinedIdea,
   }) async {
-    // Optimistic update - change UI immediately
-    _isFavorited = true;
-    notifyListeners();
-
     try {
       // Determine type based on original idea's dataset
       String refinedType = 'ai_refined';
@@ -120,7 +115,7 @@ class IdeaDetailsViewModel extends ChangeNotifier {
       // Use original idea ID as basis for refined idea ID to avoid duplicates on re-adding
       final refinedItemId = '${originalIdea.id}_refined';
 
-      final result = await _favoritesRepository.addAiRefinedScriptToFavorites(
+      final outcome = await _favoritesRepository.addAiRefinedScriptToFavorites(
         itemId: refinedItemId,
         title: refinedIdea.title,
         originalScript: originalIdea.description,
@@ -141,8 +136,11 @@ class IdeaDetailsViewModel extends ChangeNotifier {
           },
         ],
       );
+      if (outcome.isSuccess) {
+        _isFavorited = true;
+      }
       notifyListeners();
-      return result;
+      return outcome.result;
     } catch (e) {
       // Revert optimistic update on failure
       _isFavorited = false;

@@ -151,7 +151,8 @@
         "delete_took_too_long": "Hisob o'chirish juda ko'p vaqt oldi. Iltimos, keyinroq urinib ko'ring.",
         "delete_stale_auth_title": "Shaxsingizni tasdiqlang",
         "delete_stale_auth_message": "Xavfsizlik uchun, o'chirishni tasdiqlash uchun qayta kiring",
-        "delete_stale_auth_button": "Kirish"
+        "delete_stale_auth_button": "Kirish",
+        "delete_auth_failed": "Ma'lumotlaringiz o'chirildi, lekin kirish hisobini to'liq o'chirib bo'lmadi. Chiqing, qayta urinib ko'ring yoki kirish hali ishlasa, qo'llab-quvvatlashga murojaat qiling."
     },
     "paywall": {
         "title": "IdeaBoost Premium Ochish",
@@ -694,7 +695,8 @@
         "invalid_password": "Noto'g'ri parol. Iltimos, qayta urinib ko'ring.",
         "user_disabled": "Bu hisob o'chirilgan. Iltimos, qo'llab-quvvatlash bilan bog'laning.",
         "too_many_login_attempts": "Juda ko'p login urinishlari. Iltimos, keyinroq qayta urinib ko'ring.",
-        "weak_password": "Parol juda kuchsiz. Minimal 6 ta belgi bilan harflar va raqamlarni aralash ishlatilsin."
+        "weak_password": "Parol juda kuchsiz. Minimal 6 ta belgi bilan harflar va raqamlarni aralash ishlatilsin.",
+        "account_deletion_not_allowed": "Hisobni o'chirish hozircha mumkin emas. Qo'llab-quvvatlashga murojaat qiling."
     },
     "comment_ext": {
         "enter_text_prompt": "Izohlar yaratish uchun matn yoki havola kiriting.",

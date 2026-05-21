@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:ideaboost/core/constants/colors.dart';
+import 'package:ideaboost/core/utils/hashtag_parser.dart';
 import 'package:ideaboost/core/constants/styles.dart';
 import 'package:ideaboost/core/utils/helpers.dart';
 import 'package:ideaboost/core/utils/idea_attribute_labels.dart';
@@ -546,83 +547,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     return normalized;
   }
 
-  List<String> _extractHashtags(dynamic source) {
-    final tags = <String>[];
+  List<String> _extractHashtags(dynamic source) =>
+      HashtagParser.extractFromDynamic(source);
 
-    void addTag(dynamic value) {
-      final text = value?.toString().trim() ?? '';
-      if (text.isEmpty) return;
-      final normalized = text.startsWith('#') ? text : '#$text';
-      if (!tags.contains(normalized)) tags.add(normalized);
-    }
-
-    void walk(dynamic value) {
-      if (value == null) return;
-      if (value is String) {
-        final matches = RegExp(r'#[\p{L}\p{N}_]+', unicode: true).allMatches(
-          value,
-        );
-        if (matches.isNotEmpty) {
-          for (final match in matches) {
-            addTag(match.group(0));
-          }
-        } else {
-          for (final part in value.split(RegExp(r'[\s,]+'))) {
-            if (part.trim().isNotEmpty) addTag(part);
-          }
-        }
-        return;
-      }
-
-      if (value is Iterable) {
-        for (final entry in value) {
-          walk(entry);
-        }
-        return;
-      }
-
-      if (value is Map) {
-        walk(value['hashtags']);
-        walk(value['content']);
-        walk(value['items']);
-        walk(value['tags']);
-        final category = value['category'];
-        if (category is String && category.trim().isNotEmpty) {
-          final categoryText = category.trim();
-          if (categoryText.contains('#')) walk(categoryText);
-        }
-        return;
-      }
-
-      addTag(value);
-    }
-
-    walk(source);
-    return tags;
-  }
-
-  /// Parse a hashtag string (e.g., "#tag1 #tag2" or "tag1, tag2") into individual tags
-  void _parseHashtagString(String input, List<String> tags) {
-    if (input.isEmpty) return;
-    
-    // Try to match individual hashtags with regex
-    final matches = RegExp(r'#[\p{L}\p{N}_]+', unicode: true).allMatches(input);
-    if (matches.isNotEmpty) {
-      for (final match in matches) {
-        final tag = match.group(0)!;
-        if (!tags.contains(tag)) tags.add(tag);
-      }
-    } else {
-      // Fall back to splitting by spaces or commas
-      for (final part in input.split(RegExp(r'[\s,]+'))) {
-        final trimmed = part.trim();
-        if (trimmed.isNotEmpty) {
-          final tag = trimmed.startsWith('#') ? trimmed : '#$trimmed';
-          if (!tags.contains(tag)) tags.add(tag);
-        }
-      }
-    }
-  }
+  void _parseHashtagString(String input, List<String> tags) =>
+      HashtagParser.parseInto(input, tags);
 
   Color _getIconColor(String type) {
     if (type.contains('comment')) return AppColors.typeComment;
@@ -2160,11 +2089,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
         )
         .join('\n');
     // Updated regex to support Unicode letters (Cyrillic, Arabic, etc.)
-    final exp = RegExp(
-      r'\*\*(.*?)\*\*|(#[\p{L}\p{N}_]+)',
-      dotAll: false,
-      unicode: true,
-    );
+    final exp = HashtagParser.inlineFormatPattern;
     int start = 0;
 
     for (final match in exp.allMatches(normalized)) {
@@ -2199,7 +2124,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 ),
               ),
               child: Text(
-                match.group(2)!,
+                HashtagParser.cleanToken(match.group(2)!),
                 style: const TextStyle(
                   color: Color(0xFF00D4FF),
                   fontWeight: FontWeight.w700,

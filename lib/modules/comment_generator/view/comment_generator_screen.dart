@@ -931,9 +931,12 @@ class _CommentGeneratorScreenBodyState extends State<CommentGeneratorScreenBody>
                                     .saveCurrentOutputToFavorites();
                                 if (vm.errorMessage == null &&
                                     context.mounted) {
-                                  final isAlready =
+                                  final saved = result ==
+                                          SaveFavoriteResult.saved ||
+                                      result == SaveFavoriteResult.updated;
+                                  final isAlready = !saved &&
                                       result ==
-                                      SaveFavoriteResult.alreadyExists;
+                                          SaveFavoriteResult.alreadyExists;
                                   showSnackBarSafe(
                                     context,
                                     SnackBar(
@@ -1864,7 +1867,9 @@ class _CommentGeneratorScreenBodyState extends State<CommentGeneratorScreenBody>
                     if (!vm.isFavorited) {
                       final result = await vm.saveCurrentOutputToFavorites();
                       if (vm.errorMessage == null && context.mounted) {
-                        final isAlreadySaved =
+                        final saved = result == SaveFavoriteResult.saved ||
+                            result == SaveFavoriteResult.updated;
+                        final isAlreadySaved = !saved &&
                             result == SaveFavoriteResult.alreadyExists;
                         showSnackBarSafe(
                           context,

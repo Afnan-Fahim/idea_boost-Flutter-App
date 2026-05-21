@@ -27,6 +27,7 @@ import '../../../data/network/api_client.dart';
 import '../../../data/repository/history_repository.dart';
 import '../../../core/services/user_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/hashtag_parser.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -2861,28 +2862,8 @@ class _HomeScreenState extends State<HomeScreen> {
           );
   }
 
-  /// Parse a hashtag string (e.g., "#tag1 #tag2" or "tag1, tag2") into individual tags
-  void _parseHashtagString(String input, List<String> tags) {
-    if (input.isEmpty) return;
-    
-    // Try to match individual hashtags with regex
-    final matches = RegExp(r'#[\p{L}\p{N}_]+', unicode: true).allMatches(input);
-    if (matches.isNotEmpty) {
-      for (final match in matches) {
-        final tag = match.group(0)!;
-        if (!tags.contains(tag)) tags.add(tag);
-      }
-    } else {
-      // Fall back to splitting by spaces or commas
-      for (final part in input.split(RegExp(r'[\s,]+'))) {
-        final trimmed = part.trim();
-        if (trimmed.isNotEmpty) {
-          final tag = trimmed.startsWith('#') ? trimmed : '#$trimmed';
-          if (!tags.contains(tag)) tags.add(tag);
-        }
-      }
-    }
-  }
+  void _parseHashtagString(String input, List<String> tags) =>
+      HashtagParser.parseInto(input, tags);
 
   Widget _buildShotIdeasDetail(Map<String, dynamic> output, String prompt) {
     final content = output['content'];
@@ -3260,11 +3241,7 @@ class _HomeScreenState extends State<HomeScreen> {
         )
         .join('\n');
     // Updated regex to support Unicode letters (Cyrillic, Arabic, etc.)
-    final exp = RegExp(
-      r'\*\*(.*?)\*\*|(#[\p{L}\p{N}_]+)',
-      dotAll: false,
-      unicode: true,
-    );
+    final exp = HashtagParser.inlineFormatPattern;
     int start = 0;
 
     for (final match in exp.allMatches(normalized)) {
@@ -3299,7 +3276,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               child: Text(
-                match.group(2)!,
+                HashtagParser.cleanToken(match.group(2)!),
                 style: const TextStyle(
                   color: Color(0xFF06B6D4),
                   fontWeight: FontWeight.w700,

@@ -479,17 +479,13 @@ class ShotIdeasViewModel extends ChangeNotifier {
       return SaveFavoriteResult.saved; // Fallback, won't save
     }
 
-    // Optimistic update - change UI immediately
-    _isFavorited = true;
-    notifyListeners();
-
     try {
       final itemId = DateTime.now().millisecondsSinceEpoch.toString();
       final title = _input.length > 50
           ? '${_input.substring(0, 50)}...'
           : _input;
 
-      final result = await _favoritesRepository.addShortIdeasToFavorites(
+      final outcome = await _favoritesRepository.addShortIdeasToFavorites(
         itemId: itemId,
         title: title,
         content: {'prompt': _input, 'shot_ideas': _output!},
@@ -505,13 +501,13 @@ class ShotIdeasViewModel extends ChangeNotifier {
         generatedAt: DateTime.now().toIso8601String(),
       );
 
-      if (result == SaveFavoriteResult.saved) {
-        _lastSavedItemId = itemId;
+      if (outcome.isSuccess) {
+        _isFavorited = true;
+        _lastSavedItemId = outcome.itemId;
       }
       notifyListeners();
-      return result;
+      return outcome.result;
     } catch (e) {
-      // Revert optimistic update on failure
       _isFavorited = false;
       _errorMessage = 'errors.failed_save_favorites'.tr();
       notifyListeners();
