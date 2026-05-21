@@ -6,7 +6,10 @@ import 'package:ideaboost/data/repository/favorites_repository.dart';
 class FavoritesViewModel extends ChangeNotifier {
   final FavoritesRepository _repository;
 
-  FavoritesViewModel(this._repository);
+  FavoritesViewModel(this._repository) {
+    // Subscribe to Favorites changes
+    _changeSubscription = FavoritesRepository.onChange.listen(_handleFavoritesChange);
+  }
 
   // Expose repository for screen access
   FavoritesRepository get repository => _repository;
@@ -17,41 +20,28 @@ class FavoritesViewModel extends ChangeNotifier {
 
   StreamSubscription<FavoritesChangeEvent>? _changeSubscription;
 
-  FavoritesViewModel(this._repository) {
-    _changeSubscription = FavoritesRepository.onChange.listen(_handleFavoritesChange);
-  }
 
   void _handleFavoritesChange(FavoritesChangeEvent event) {
     if (event.isDeleted) {
-      final index = favorites.indexWhere(
-        (item) => item['id'] == event.itemId || item['itemId'] == event.itemId,
-      );
+      final index = favorites.indexWhere((item) => item['id'] == event.itemId || item['itemId'] == event.itemId);
       if (index != -1) {
         favorites.removeAt(index);
         _invalidateFilterCache();
         notifyListeners();
       }
     } else {
-      final exists = favorites.any(
-        (item) => item['id'] == event.itemId || item['itemId'] == event.itemId,
-      );
+      final exists = favorites.any((item) => item['id'] == event.itemId || item['itemId'] == event.itemId);
       if (!exists) {
         _repository.getFavoriteItem(event.type, event.itemId).then((item) {
           if (item != null) {
-            final stillExists = favorites.any(
-              (i) => i['id'] == event.itemId || i['itemId'] == event.itemId,
-            );
+            final stillExists = favorites.any((i) => i['id'] == event.itemId || i['itemId'] == event.itemId);
             if (!stillExists) {
               favorites.add({...item, 'type': event.type});
               favorites.sort((a, b) {
                 final aTime = a['savedAt'];
                 final bTime = b['savedAt'];
-                DateTime aDate = aTime.runtimeType.toString().contains('Timestamp')
-                    ? aTime.toDate()
-                    : DateTime.tryParse(aTime.toString()) ?? DateTime.now();
-                DateTime bDate = bTime.runtimeType.toString().contains('Timestamp')
-                    ? bTime.toDate()
-                    : DateTime.tryParse(bTime.toString()) ?? DateTime.now();
+                DateTime aDate = aTime.runtimeType.toString().contains('Timestamp') ? aTime.toDate() : DateTime.tryParse(aTime.toString()) ?? DateTime.now();
+                DateTime bDate = bTime.runtimeType.toString().contains('Timestamp') ? bTime.toDate() : DateTime.tryParse(bTime.toString()) ?? DateTime.now();
                 return bDate.compareTo(aDate);
               });
               _invalidateFilterCache();
@@ -62,6 +52,7 @@ class FavoritesViewModel extends ChangeNotifier {
       }
     }
   }
+
 
   @override
   void dispose() {
